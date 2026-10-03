@@ -15,27 +15,21 @@ Claude の隔離では OAuth を失う `--bare` を使いません。`plan` / `r
 
 ## インストール
 
-以下はチェックアウト先を `~/git/review-team` とした例です。
+[skills](https://github.com/vercel-labs/skills) CLI でインストールします。
 
 ```sh
-git clone https://github.com/yuki777/review-team.git "$HOME/git/review-team"
-SKILL_DIR="$HOME/git/review-team/skills/review-team"
-node "$SKILL_DIR/scripts/install.mjs"
+npx skills add yuki777/review-team -g -a claude-code -a codex -y
 ```
 
-次の二つを、チェックアウト内の同じスキルディレクトリへのシンボリックリンクにします。
+- 本体は `~/.agents/skills/review-team` に置かれ、`~/.claude/skills/review-team` はそこへのシンボリックリンクになります。Codex と OMP は `~/.agents/skills`、Claude Code は `~/.claude/skills` を読みます。
+- 更新は `npx skills update review-team -g`、削除は `npx skills remove review-team -g` です。
+- インストールはスキルの配置だけです。レビュアーの CLI（`claude`、`codex`、`grok`）のインストールと認証は別途必要です。
 
-- `~/.claude/skills/review-team`
-- `~/.agents/skills/review-team`
-
-同じ対象へのリンクなら再実行しても変更しません。別のリンク、壊れたリンク、通常ファイル、ディレクトリは上書きせずエラーにします。チェックアウトを移動するとリンクは切れます。installer は CLI や認証情報を変更しません。
+以降の例では、スキルの場所を次のように置きます。
 
 ```sh
-node "$SKILL_DIR/scripts/install.mjs" --help
-node "$SKILL_DIR/scripts/install.mjs" --home "$HOME/review-team-install-check"
+SKILL_DIR="$HOME/.agents/skills/review-team"
 ```
-
-`--help` はファイルを変更しません。`--home` は登録先だけを変更する絶対パスで、上の例は普段のホームと分けた登録です。
 
 ## packet の作り方
 
@@ -77,7 +71,7 @@ NODE
 ## runner の起動
 
 ```sh
-SKILL_DIR="$HOME/git/review-team/skills/review-team"
+SKILL_DIR="$HOME/.agents/skills/review-team"
 OUTPUT="$HOME/review-team-result-$(date +%Y%m%d-%H%M%S)"
 node "$SKILL_DIR/scripts/run-reviewers.mjs" --help
 node "$SKILL_DIR/scripts/run-reviewers.mjs" \
@@ -163,11 +157,11 @@ REVIEW_TEAM_CODEX_CLI="$HOME/.vite-plus/bin/codex" node "$SKILL_DIR/scripts/run-
 | OMP | スキルが discovery された状態で `/skill:review-team`。`skills.enableSkillCommands` が有効である必要があります。 |
 | Paseo | 実際に agent が動く daemon 側でインストールし、その agent の provider に対応する上記の呼び出し方を使います。Paseo 共通の新しい slash command を登録するものではありません。 |
 
-**OMP の注意:** 現行ドキュメントでは foreign user provider が opt-in です。`~/.agents` に置くだけで全構成から自動検出されるとは仮定しません。明確な登録方法は、既存の `~/.omp/agent/config.yml` の `skills.customDirectories` にスキルの親ディレクトリ `~/git/review-team/skills` の実際の絶対パスを追加し、`skills.enableSkillCommands` を有効にすることです。Claude のユーザースキルを discovery する方法なら `enabledProviders` で `claude` を明示的に opt-in し、関連する skills の source 設定も確認してください。`--skills review-team` はフィルターであり、スキルの登録先を追加するオプションではありません。
+**OMP の注意:** 現行ドキュメントでは foreign user provider が opt-in です。`~/.agents` に置くだけで全構成から自動検出されるとは仮定しません。明確な登録方法は、既存の `~/.omp/agent/config.yml` の `skills.customDirectories` に `~/.agents/skills` の実際の絶対パスを追加し、`skills.enableSkillCommands` を有効にすることです。Claude のユーザースキルを discovery する方法なら `enabledProviders` で `claude` を明示的に opt-in し、関連する skills の source 設定も確認してください。`--skills review-team` はフィルターであり、スキルの登録先を追加するオプションではありません。
 
 Paseo がリモート daemon やコンテナを管理している場合、手元のアプリのホームではなく、その daemon のホーム・`PATH`・認証を使います。
 
-スキル選択に対応しない UI では「`~/git/review-team/skills/review-team/SKILL.md` を読み、その手順でこの packet をレビューして」と実パスで明示するか、runner をターミナルで起動して結果を親へ渡してください。
+スキル選択に対応しない UI では「`~/.agents/skills/review-team/SKILL.md` を読み、その手順でこの packet をレビューして」と実パスで明示するか、runner をターミナルで起動して結果を親へ渡してください。
 
 ## 結果の読み方
 
