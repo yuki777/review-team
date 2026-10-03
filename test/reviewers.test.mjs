@@ -54,3 +54,11 @@ for (const [spec, message] of [
     await rm(dir, { recursive: true, force: true });
   });
 }
+
+test('--helpは使い方を表示して正常終了する', async () => {
+  const child = spawn(process.execPath, [runner, '--help'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let stdout = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  assert.equal(await new Promise(resolve => child.on('exit', resolve)), 0);
+  assert.match(stdout, /--reviewer <cli>:<model>\[:<effort>\]/);
+});

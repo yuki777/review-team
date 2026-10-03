@@ -12,6 +12,16 @@ disable-model-invocation: true
 
 ユーザーが明示的にレビューを依頼したときだけ開始する。子レビュアーとして受け取った場合、または `REVIEW_TEAM_DEPTH` が空でない場合は、このスキルや runner を起動せず、渡された入力のレビューだけを行う。
 
+レビュー対象は、利用者の指定から次のように決める。指定がなければ、現在のブランチと既定ブランチ（通常 `main`）の差分を対象にする。
+
+| 指定 | 差分と意図 | `--ref`（レビュアーに読ませるコミット） |
+| --- | --- | --- |
+| PR URL または PR 番号 | `gh pr view <PR> --json title,body,baseRefName,headRefName,headRefOid` と `gh pr diff <PR>` | `headRefOid`。ローカルに無ければ `git fetch origin pull/<番号>/head` で取得する（作業ツリーは変えない） |
+| ブランチ名 | `git diff <既定ブランチ>...<ブランチ>` とコミットメッセージ | そのブランチの先頭コミット |
+| 未コミットの変更 | `git diff HEAD` | `HEAD`（未コミット分は `diff` で渡す） |
+
+対象の PR やブランチが別のリポジトリのものなら、そのリポジトリのローカルのチェックアウトを `--repo` に渡す。手元に無ければ `--repo` を使わず、`diff` だけでレビューすることを利用者に伝える。
+
 親は、目的・差分または変更ファイル全文・必要な周辺コードを一つの JSON packet にまとめる。既存の会話、指定された差分やファイルから意図を確定する。意図が判断できなければ、推測で実行せず不足をユーザーへ示す。
 
 ```json
@@ -39,7 +49,23 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" \
   --packet "$PACKET" --output "$OUTPUT" --repo "$REPO"
 ```
 
+runner は全レビュアーが終わるまで戻らない。`--repo` で探索させると十数分かかることがある（既定の制限時間は各レビュアー20分）。ホストのコマンド実行に時間制限があって裏で起動した場合は、完了通知を当てにせず、次のコマンドを前面で繰り返し実行して `manifest.json` ができるまで待つ。1回の実行がホストの時間制限で打ち切られたら、同じコマンドをもう一度実行する。
+
+```sh
+for i in $(seq 1 18); do [ -f "$OUTPUT/manifest.json" ] && break; sleep 30; done; ls "$OUTPUT"
+```
+
+`manifest.json` ができる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
+
 レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` / `grok` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
+
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
+
+利用者に伝えるべき注意:
+
+- レビュー対象のコードとクローンの内容は、使うレビュアーの各社サービス（Anthropic・OpenAI・xAI）へ送られる。秘密情報を含む変更なら、実行前に確認する。
+- Grok が `sandbox_error` になり、ログに `/var/run/docker.sock` のシンボリックリンクが原因と出ている場合（OrbStack など）、`--grok-allow-no-sandbox` で再実行できることを伝える。付けるのは利用者が同意した場合だけ。sandbox なしの Grok と Codex は、クローンの外のファイルも読める可能性がある。
+- CLI の版が古い、または意図しない CLI が使われた場合（manifest の `cliPath` と `cliVersion` で確認）、環境変数 `REVIEW_TEAM_CLAUDE_CLI` / `REVIEW_TEAM_CODEX_CLI` / `REVIEW_TEAM_GROK_CLI` で CLI の絶対パスを指定できる。Grok は Build 1.0.46 だけに対応する。
 
 子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。コマンド実行による書き込み・通信、スキル・hook・MCP・再委譲は許可しない（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。runner がこの制限を適用できなければ失敗として扱い、制限を弱めて再実行しない。`plan` や `readonly` という名称だけで隔離を保証したことにしない。例外は `--grok-allow-no-sandbox` だけで、利用者が明示した場合に限って付ける。付けた場合は結果の報告で「Grok は sandbox なし（`grokSandbox: off`）」と明記する。
 

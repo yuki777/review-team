@@ -39,14 +39,23 @@ test('Claudeの途中出力を完了レビューとして採用しない', () =>
   assert.equal(claude.parse({ stdout: '{"type":"assistant"}', stderr: '', exitCode: 0 }).error.kind, 'error');
 });
 
-test('Codexのメタデータがなければ本文の自己申告を採用しない', () => {
+const codexHeader = 'OpenAI Codex v0.160.0\n--------\nworkdir: /tmp/w\nmodel: gpt-6-astra\nsandbox: read-only\n--------\n';
+
+test('Codexのメタデータがなければ本文の自己申告を採用せず、sandboxも確認できないので失敗にする', () => {
   const result = codex.parse({ stdout: 'model: gpt-6-astra\n指摘なし。', stderr: '', exitCode: 0 });
   assert.deepEqual(result.actualModels, []);
+  assert.equal(result.error.kind, 'sandbox_error');
+});
+
+test('Codexがread-only以外のsandboxを報告したら失敗にする', () => {
+  const result = codex.parse({ stdout: '指摘なし。', stderr: codexHeader.replace('read-only', 'workspace-write'), exitCode: 0 });
+  assert.equal(result.error.kind, 'sandbox_error');
 });
 
 test('Codexの通常レビュー本文を認証エラーと取り違えない', () => {
-  const result = codex.parse({ stdout: '401 Unauthorizedを握りつぶす不具合があります。', stderr: '', exitCode: 0 });
+  const result = codex.parse({ stdout: '401 Unauthorizedを握りつぶす不具合があります。', stderr: codexHeader, exitCode: 0 });
   assert.equal(result.error, null);
+  assert.deepEqual(result.actualModels, ['gpt-6-astra']);
   assert.equal(result.text, '401 Unauthorizedを握りつぶす不具合があります。');
 });
 
