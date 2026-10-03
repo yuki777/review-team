@@ -6,9 +6,10 @@ const disabledFeatures = [
 ];
 
 export const codex = {
+  command: 'codex',
   async prepare({ model, workDir, prompt }) {
     return {
-      command: 'codex', cwd: workDir,
+      cwd: workDir,
       args: ['exec', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check',
         '--ephemeral', '--sandbox', 'read-only', '--model', model, '--color', 'never',
         '-c', 'approval_policy="never"', '-c', 'mcp_servers={}',

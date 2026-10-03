@@ -1,9 +1,10 @@
 import { classifyError } from './errors.mjs';
 
 export const claude = {
+  command: 'claude',
   async prepare({ model, workDir, prompt }) {
     return {
-      command: 'claude', cwd: workDir,
+      cwd: workDir,
       args: ['--print', '--model', model, '--output-format', 'json',
         '--safe-mode', '--restricted', '--setting-sources', '',
         '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',

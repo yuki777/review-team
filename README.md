@@ -110,6 +110,8 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" \
 
 終了コードは `0`: 三件成功、`1`: 一件以上の実行失敗、`2`: 不正な起動です。部分失敗でも取得できた指摘は親が判定し、欠けたレビューを明示します。
 
+Ctrl+C（SIGINT）、SIGTERM、端末を閉じたとき（SIGHUP）は、三つの CLI を停止してから `manifest.json` に中断を記録し、一時作業ディレクトリを削除します。SIGKILL や起動元プロセスの異常終了で runner が止まった場合は後片付けができません。その場合、子 CLI は完了まで動き続け、`manifest.json` は作られず、`$TMPDIR/review-triple-*` が残ります。`manifest.json` が無い出力は三件とも取得不可として扱い、新しい出力先で再実行してください。
+
 ### 使用する CLI の確認と指定
 
 runner は各 CLI を `PATH` から探し、`manifest.json` の `cliPath` と `cliVersion` に記録します。動作確認した版は Claude Code 2.1.288、codex-cli 0.160.0、Grok Build 1.0.46 です。Grok の adapter は 1.0.46 の隔離仕様に限定しており、他の版では `sandbox_error` で停止します。

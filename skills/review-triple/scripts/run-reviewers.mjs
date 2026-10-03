@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import { claude } from './claude.mjs';
 import { codex } from './codex.mjs';
 import { grok } from './grok.mjs';
@@ -13,6 +13,7 @@ import { classifyError } from './errors.mjs';
 
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const adapters = { claude, codex, grok };
+const execFileAsync = promisify(execFile);
 const help = `review-triple: 同一資料を3つのCLIで独立レビューします。
 
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
@@ -130,17 +131,17 @@ async function review(provider, adapter, input, workRoot, abortSignal) {
   let stderr = '';
   let text = '';
   try {
+    const command = process.env[`REVIEW_TRIPLE_${provider.toUpperCase()}_CLI`] || adapter.command;
+    try {
+      result.cliPath = (await execFileAsync('/bin/sh', ['-c', 'command -v "$1"', 'sh', command], { signal: abortSignal })).stdout.trim();
+      result.cliVersion = (await execFileAsync(result.cliPath, ['--version'], { timeout: 10000, signal: abortSignal })).stdout.trim();
+    } catch {
+      throw new Error(abortSignal.aborted ? 'レビューを中断しました。' : `${command} CLIが見つからないか、バージョンを取得できません。`);
+    }
     const workDir = join(workRoot, provider);
     await mkdir(workDir, { mode: 0o700 });
-    const invocation = await adapter.prepare({ model: result.requestedModel, workDir,
+    const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel, workDir,
       promptPath: join(input.output, 'prompt.md'), prompt: input.prompt });
-    try {
-      const command = process.env[`REVIEW_TRIPLE_${provider.toUpperCase()}_CLI`] || invocation.command;
-      result.cliPath = execFileSync('/bin/sh', ['-c', 'command -v "$1"', 'sh', command], { encoding: 'utf8' }).trim();
-      result.cliVersion = execFileSync(result.cliPath, ['--version'], { encoding: 'utf8', timeout: 10000 }).trim();
-    } catch {
-      throw new Error(`${invocation.command} CLIが見つからないか、バージョンを取得できません。`);
-    }
     if (abortSignal.aborted) throw new Error('レビューを中断しました。');
     const processResult = await execute({ ...invocation, command: result.cliPath }, input.timeoutMs, abortSignal);
     ({ stdout, stderr } = processResult);
@@ -181,8 +182,8 @@ async function main() {
   const workRoot = await mkdtemp(join(tmpdir(), 'review-triple-'));
   const controller = new AbortController();
   const interrupt = () => controller.abort();
-  process.on('SIGINT', interrupt);
-  process.on('SIGTERM', interrupt);
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  for (const signal of signals) process.on(signal, interrupt);
   const startedAt = new Date().toISOString();
   try {
     const reviewers = await Promise.all(Object.entries(adapters).map(([provider, adapter]) =>
@@ -197,8 +198,7 @@ async function main() {
     process.exitCode = complete ? 0 : 1;
   } finally {
     controller.abort();
-    process.removeListener('SIGINT', interrupt);
-    process.removeListener('SIGTERM', interrupt);
+    for (const signal of signals) process.removeListener(signal, interrupt);
     await rm(workRoot, { recursive: true, force: true });
   }
 }

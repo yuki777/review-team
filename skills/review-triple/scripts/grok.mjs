@@ -103,7 +103,7 @@ function isolatedEnvironment(home, grokHome, authPath) {
   });
 }
 
-async function inspectIsolation(cwd, overrides) {
+async function inspectIsolation(cli, cwd, overrides) {
   const env = { ...process.env };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === null) delete env[key];
@@ -111,7 +111,7 @@ async function inspectIsolation(cwd, overrides) {
   }
   let report;
   try {
-    const { stdout, stderr } = await execFileAsync('grok', ['inspect', '--json'], {
+    const { stdout, stderr } = await execFileAsync(cli, ['inspect', '--json'], {
       cwd, env, timeout: 20_000, maxBuffer: 2 * 1024 * 1024,
     });
     if (sandboxFailure.test(stderr)) throw sandboxError('Grokの隔離設定を適用できません。');
@@ -142,7 +142,8 @@ async function inspectIsolation(cwd, overrides) {
 }
 
 export const grok = {
-  async prepare({ model, workDir, promptPath }) {
+  command: 'grok',
+  async prepare({ cli, model, workDir, promptPath }) {
     const cwd = await realpath(workDir);
     const home = join(cwd, 'home');
     const grokHome = join(home, '.grok');
@@ -160,9 +161,8 @@ export const grok = {
       `[profiles.review-triple]\nextends = "read-only"\nrestrict_network = true\nread_write = [${JSON.stringify(dirname(authPath))}]\n`,
       { mode: 0o600, flag: 'wx' });
     const env = isolatedEnvironment(home, grokHome, authPath);
-    await inspectIsolation(cwd, env);
+    await inspectIsolation(cli, cwd, env);
     return {
-      command: 'grok',
       args: [
         '--prompt-file', promptPath, '--verbatim', '--model', model,
         '--agent', profilePath, '--permission-mode', 'dontAsk', '--deny', '*',
