@@ -143,7 +143,7 @@ async function inspectIsolation(cli, cwd, overrides) {
 
 export const grok = {
   command: 'grok',
-  async prepare({ cli, model, workDir, promptPath }) {
+  async prepare({ cli, model, workDir, promptPath, grokAllowNoSandbox }) {
     const cwd = await realpath(workDir);
     const home = join(cwd, 'home');
     const grokHome = join(home, '.grok');
@@ -155,18 +155,20 @@ export const grok = {
     await writeFile(join(grokHome, 'requirements.toml'), settings, { mode: 0o600, flag: 'wx' });
     const profilePath = join(cwd, 'reviewer.profile');
     await writeFile(profilePath, profile, { mode: 0o600, flag: 'wx' });
-    // Native OAuth refresh uses an atomic sibling-file rename and auth.json.lock.
-    // Grant only that native auth directory, without importing its config/hooks.
-    await writeFile(join(grokHome, 'sandbox.toml'),
-      `[profiles.review-triple]\nextends = "read-only"\nrestrict_network = true\nread_write = [${JSON.stringify(dirname(authPath))}]\n`,
-      { mode: 0o600, flag: 'wx' });
+    if (!grokAllowNoSandbox) {
+      // Native OAuth refresh uses an atomic sibling-file rename and auth.json.lock.
+      // Grant only that native auth directory, without importing its config/hooks.
+      await writeFile(join(grokHome, 'sandbox.toml'),
+        `[profiles.review-triple]\nextends = "read-only"\nrestrict_network = true\nread_write = [${JSON.stringify(dirname(authPath))}]\n`,
+        { mode: 0o600, flag: 'wx' });
+    }
     const env = isolatedEnvironment(home, grokHome, authPath);
     await inspectIsolation(cli, cwd, env);
     return {
       args: [
         '--prompt-file', promptPath, '--verbatim', '--model', model,
         '--agent', profilePath, '--permission-mode', 'dontAsk', '--deny', '*',
-        '--sandbox', 'review-triple', '--no-plan', '--no-subagents',
+        '--sandbox', grokAllowNoSandbox ? 'off' : 'review-triple', '--no-plan', '--no-subagents',
         '--disable-web-search', '--output-format', 'streaming-messages-json',
       ],
       cwd,

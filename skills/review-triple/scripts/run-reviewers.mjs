@@ -20,6 +20,7 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --claude-model <ID>          Claudeのモデル（既定は config/models.json）
   --codex-model <ID>           Codexのモデル（同上）
   --grok-model <ID>            Grokのモデル（同上）
+  --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
   --timeout <秒>                各CLIの制限時間（既定 600、最大3600）
   --help                       説明のみ表示
 
@@ -32,7 +33,8 @@ async function loadInput() {
   const { values } = parseArgs({ options: {
     packet: { type: 'string' }, output: { type: 'string' },
     'claude-model': { type: 'string' }, 'codex-model': { type: 'string' }, 'grok-model': { type: 'string' },
-    timeout: { type: 'string', default: '600' }, help: { type: 'boolean' },
+    timeout: { type: 'string', default: '600' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
+    help: { type: 'boolean' },
   } });
   if (values.help) return null;
   if (process.env.REVIEW_TRIPLE_DEPTH) throw new Error('子レビューからのreview-triple再起動は禁止です。');
@@ -66,7 +68,7 @@ async function loadInput() {
     CODE_QUALITY_CONTENTS: quality,
   };
   const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/g, (_, key) => replacements[key]);
-  return { models, timeoutMs, prompt, output: resolve(values.output) };
+  return { models, timeoutMs, prompt, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
 }
 
 function execute(invocation, timeoutMs, abortSignal) {
@@ -141,6 +143,7 @@ async function review(provider, adapter, input, workRoot, abortSignal) {
     const workDir = join(workRoot, provider);
     await mkdir(workDir, { mode: 0o700 });
     const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel, workDir,
+      grokAllowNoSandbox: input.grokAllowNoSandbox,
       promptPath: join(input.output, 'prompt.md'), prompt: input.prompt });
     if (abortSignal.aborted) throw new Error('レビューを中断しました。');
     const processResult = await execute({ ...invocation, command: result.cliPath }, input.timeoutMs, abortSignal);
@@ -189,7 +192,7 @@ async function main() {
     const reviewers = await Promise.all(Object.entries(adapters).map(([provider, adapter]) =>
       review(provider, adapter, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 1,
+    const manifest = { schemaVersion: 1, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required',
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });

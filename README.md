@@ -169,7 +169,7 @@ Paseo がリモート daemon やコンテナを管理している場合、手元
 - packet、prompt、結果、raw ログはローカルにもコードを残します。出力先は非公開にし、共有前に機密を確認してください。認証済み CLI は必要ですが、認証情報を packet やモデル引数に入れません。
 - 親は明示された対象から事前に情報を集めます。子は packet だけを読み、対象コード・テスト・未提供の呼び出し元を実行や探索で確かめません。不足は未確認範囲として返します。
 - CLI の制限を適用する設計であり、独立した OS セキュリティ境界や外部 provider の内部動作を保証するものではありません。設定不足や未対応 CLI は fail-closed に扱います。
-- Grok は read-only sandbox を必須にしています。`/var/run/docker.sock` がシンボリックリンクの macOS（OrbStack や Docker Desktop の一部構成）では、Grok 1.0.46 の sandbox 自体が起動を拒否するため、Grok のレビューは常に `sandbox_error` になります。sandbox なしで起動する抜け道は用意していません。
+- Grok は既定で read-only sandbox を必須にしています。`/var/run/docker.sock` がシンボリックリンクの macOS（OrbStack や Docker Desktop の一部構成）では、Grok 1.0.46 の sandbox 自体が起動を拒否し、Grok のレビューは `sandbox_error` になります。この環境では `--grok-allow-no-sandbox` を明示すると sandbox なしで起動します。その場合も、使えるツールは `read_file` だけ、全操作は `--deny '*'` で拒否、作業場所は空の一時ディレクトリです。ただし OS レベルの読み取り・ネットワーク制限はかかりません。`manifest.json` の `grokSandbox` に `off` と記録されます。自動で sandbox なしに切り替えることはありません。
 - モデルの一致、CLI の成功、綺麗な Markdown は正しさの証明ではありません。対象コードの修正、テスト実行、コミット、PR 操作はレビュー後の別作業です。
 
 ## 出典とライセンス
