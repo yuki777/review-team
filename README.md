@@ -69,15 +69,6 @@ npx skills remove review-team -g
 
 既定のレビュアーの一覧は `~/.agents/skills/review-team/config/reviewers.json` にあります。このファイルは更新のたびに上書きされるので、組み合わせを変えたいときは頼むときに指定してください。
 
-## 注意
-
-- **コードの送信先**：レビュー対象のコードは、使うレビュアーの各社サービスへ送られます。秘密情報を含む変更では使わないでください。
-- **読み取り専用の仕組み**：レビュアーが読むのはユーザーの作業ツリーではなく、書き込み権限を外したクローンです。Claude と Grok は読み取り系ツールだけを使えます。Codex はファイルを読むためにシェルを使い、read-only sandbox が書き込みと通信を止めます。
-- **クローン外の読み取り**：Codex と、sandbox なしの Grok は、クローンの外のファイルも読める可能性があります。
-- **Grok の sandbox**：`/var/run/docker.sock` がシンボリックリンクの macOS（OrbStack など）では、Grok の sandbox が起動しません。その環境では「Grok は sandbox なしで」と頼んでください。
-- **モデル名**：結果に記録されるモデル名は CLI が報告した値です。サーバーが実際に使ったモデルの証明ではありません。
-- **古い CLI が使われる場合**：Node のバージョン管理ツールによっては、古い CLI が先に見つかります。環境変数 `REVIEW_TEAM_CLAUDE_CLI`、`REVIEW_TEAM_CODEX_CLI`、`REVIEW_TEAM_GROK_CLI` で CLI の絶対パスを指定できます。
-
 ## ライセンス
 
 MIT です。pstack interrogate から取り込んだ部分の著作権表示（Copyright (c) 2026 Lauren Tan）は [LICENSE.pstack](skills/review-team/LICENSE.pstack) に残しています。
