@@ -90,20 +90,22 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" \
 
 ```json
 {
-  "claude": "claude-fable-5-1",
-  "codex": "gpt-6-astra",
-  "grok": "grok-4.7"
+  "claude": { "model": "claude-fable-5-1", "effort": "high" },
+  "codex": { "model": "gpt-6-astra", "effort": "high" },
+  "grok": { "model": "grok-4.7", "effort": "high" }
 }
 ```
 
-変更は個別の引数で明示します。指定しなかった provider はデフォルトのままです。
+`effort` は各 CLI の reasoning effort（推論の深さ）です。Claude は `--effort`、Codex は `model_reasoning_effort`、Grok は `--reasoning-effort` に渡します。使える値は CLI ごとに異なります（例: Claude は `low` / `medium` / `high` / `xhigh` / `max`）。Codex は隔離のため普段の設定ファイルを読まないので、ここで指定しないと推論なし（`none`）で動きます。
+
+変更は個別の引数で明示します。指定しなかった項目はデフォルトのままです。指定した値は `manifest.json` の `requestedModel` と `requestedEffort` に記録されます。
 
 ```sh
 node "$SKILL_DIR/scripts/run-reviewers.mjs" \
   --packet "$PACKET" --output "$OUTPUT" \
-  --claude-model claude-opus-5-5 \
+  --claude-model claude-opus-5-5 --claude-effort max \
   --codex-model gpt-6.1-sol \
-  --grok-model grok-4.6
+  --grok-effort medium
 ```
 
 自動 fallback・自動 retry はありません。利用不能なモデルを別モデルに置き換えず、失敗した reviewer を「指摘なし」に数えません。`--timeout` は秒（既定 600、上限 3600）。`REVIEW_TRIPLE_DEPTH` が空でない子プロセスからの runner 起動は拒否します。

@@ -20,6 +20,9 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --claude-model <ID>          Claudeのモデル（既定は config/models.json）
   --codex-model <ID>           Codexのモデル（同上）
   --grok-model <ID>            Grokのモデル（同上）
+  --claude-effort <値>         Claudeのreasoning effort（既定は config/models.json）
+  --codex-effort <値>          Codexのreasoning effort（同上）
+  --grok-effort <値>           Grokのreasoning effort（同上）
   --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
   --timeout <秒>                各CLIの制限時間（既定 600、最大3600）
   --help                       説明のみ表示
@@ -33,6 +36,7 @@ async function loadInput() {
   const { values } = parseArgs({ options: {
     packet: { type: 'string' }, output: { type: 'string' },
     'claude-model': { type: 'string' }, 'codex-model': { type: 'string' }, 'grok-model': { type: 'string' },
+    'claude-effort': { type: 'string' }, 'codex-effort': { type: 'string' }, 'grok-effort': { type: 'string' },
     timeout: { type: 'string', default: '600' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
     help: { type: 'boolean' },
   } });
@@ -44,10 +48,15 @@ async function loadInput() {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3600000) throw new Error('--timeoutは0より大きく3600以下の秒数にしてください。');
   const defaults = JSON.parse(await readFile(join(skillDir, 'config', 'models.json'), 'utf8'));
   const models = {};
+  const efforts = {};
   for (const provider of Object.keys(adapters)) {
-    models[provider] = values[`${provider}-model`] ?? defaults[provider];
+    models[provider] = values[`${provider}-model`] ?? defaults[provider]?.model;
+    efforts[provider] = values[`${provider}-effort`] ?? defaults[provider]?.effort;
     if (typeof models[provider] !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(models[provider])) {
       throw new Error(`${provider}のモデルIDが不正です。`);
+    }
+    if (typeof efforts[provider] !== 'string' || !/^[a-z]+$/.test(efforts[provider])) {
+      throw new Error(`${provider}のreasoning effortが不正です。`);
     }
   }
   const packet = JSON.parse(await readFile(resolve(values.packet), 'utf8'));
@@ -68,7 +77,7 @@ async function loadInput() {
     CODE_QUALITY_CONTENTS: quality,
   };
   const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/g, (_, key) => replacements[key]);
-  return { models, timeoutMs, prompt, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+  return { models, efforts, timeoutMs, prompt, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
 }
 
 function execute(invocation, timeoutMs, abortSignal) {
@@ -126,7 +135,8 @@ function execute(invocation, timeoutMs, abortSignal) {
 
 async function review(provider, adapter, input, workRoot, abortSignal) {
   const started = performance.now();
-  const result = { provider, requestedModel: input.models[provider], actualModels: [], modelEvidence: 'unknown', status: 'error',
+  const result = { provider, requestedModel: input.models[provider], requestedEffort: input.efforts[provider],
+    actualModels: [], modelEvidence: 'unknown', status: 'error',
     cliPath: null, cliVersion: null, exitCode: null, signal: null, durationMs: 0, error: null,
     outputFile: `${provider}.md`, stdoutFile: `${provider}.stdout.log`, stderrFile: `${provider}.stderr.log` };
   let stdout = '';
@@ -142,7 +152,8 @@ async function review(provider, adapter, input, workRoot, abortSignal) {
     }
     const workDir = join(workRoot, provider);
     await mkdir(workDir, { mode: 0o700 });
-    const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel, workDir,
+    const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel,
+      effort: result.requestedEffort, workDir,
       grokAllowNoSandbox: input.grokAllowNoSandbox,
       promptPath: join(input.output, 'prompt.md'), prompt: input.prompt });
     if (abortSignal.aborted) throw new Error('レビューを中断しました。');

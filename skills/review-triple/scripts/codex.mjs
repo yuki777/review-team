@@ -7,11 +7,12 @@ const disabledFeatures = [
 
 export const codex = {
   command: 'codex',
-  async prepare({ model, workDir, prompt }) {
+  async prepare({ model, effort, workDir, prompt }) {
     return {
       cwd: workDir,
       args: ['exec', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check',
         '--ephemeral', '--sandbox', 'read-only', '--model', model, '--color', 'never',
+        '-c', `model_reasoning_effort="${effort}"`,
         '-c', 'approval_policy="never"', '-c', 'mcp_servers={}',
         '-c', 'project_doc_max_bytes=0', '-c', 'skills.include_instructions=false',
         '-c', 'web_search="disabled"', '-c', 'agents.enabled=false',

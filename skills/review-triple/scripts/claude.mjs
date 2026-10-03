@@ -2,10 +2,10 @@ import { classifyError } from './errors.mjs';
 
 export const claude = {
   command: 'claude',
-  async prepare({ model, workDir, prompt }) {
+  async prepare({ model, effort, workDir, prompt }) {
     return {
       cwd: workDir,
-      args: ['--print', '--model', model, '--output-format', 'json',
+      args: ['--print', '--model', model, '--effort', effort, '--output-format', 'json',
         '--safe-mode', '--restricted', '--setting-sources', '',
         '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
         '--disable-slash-commands', '--tools', '', '--permission-mode', 'dontAsk',

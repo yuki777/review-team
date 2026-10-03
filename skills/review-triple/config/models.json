@@ -1,5 +1,5 @@
 {
-  "claude": "claude-fable-5-1",
-  "codex": "gpt-6-astra",
-  "grok": "grok-4.7"
+  "claude": { "model": "claude-fable-5-1", "effort": "high" },
+  "codex": { "model": "gpt-6-astra", "effort": "high" },
+  "grok": { "model": "grok-4.7", "effort": "high" }
 }

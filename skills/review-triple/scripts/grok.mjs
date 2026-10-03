@@ -143,7 +143,7 @@ async function inspectIsolation(cli, cwd, overrides) {
 
 export const grok = {
   command: 'grok',
-  async prepare({ cli, model, workDir, promptPath, grokAllowNoSandbox }) {
+  async prepare({ cli, model, effort, workDir, promptPath, grokAllowNoSandbox }) {
     const cwd = await realpath(workDir);
     const home = join(cwd, 'home');
     const grokHome = join(home, '.grok');
@@ -166,7 +166,7 @@ export const grok = {
     await inspectIsolation(cli, cwd, env);
     return {
       args: [
-        '--prompt-file', promptPath, '--verbatim', '--model', model,
+        '--prompt-file', promptPath, '--verbatim', '--model', model, '--reasoning-effort', effort,
         '--agent', profilePath, '--permission-mode', 'dontAsk', '--deny', '*',
         '--sandbox', grokAllowNoSandbox ? 'off' : 'review-triple', '--no-plan', '--no-subagents',
         '--disable-web-search', '--output-format', 'streaming-messages-json',
