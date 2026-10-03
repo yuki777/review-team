@@ -22,9 +22,11 @@ disable-model-invocation: true
 }
 ```
 
-`context` は省略または空配列でもよい。`path` は出典ラベルであり、子に読み取りを許可するパスではない。機密情報を除いた固定スナップショットを使う。packet 作成後から最終判定まで、対象コードの変更・修正・テスト実行は行わない。親は必要なコードを実行前に集め、子に探索を委ねない。
+`context` は省略または空配列でもよい。`path` は出典ラベルである。機密情報を除いた固定スナップショットを使う。packet 作成後から最終判定まで、対象コードの変更・修正・テスト実行は行わない。
 
-完了条件: 意図と対象をユーザーへ明示でき、必要な呼び出し経路や制約の有無が packet から判別できる。不足が残るなら不足箇所も明示する。全リポジトリを読んだことにはしない。
+対象が git リポジトリなら、runner に `--repo` でそのルートを渡す。runner は指定コミット（`--ref`、既定 `HEAD`）を `${XDG_STATE_HOME:-~/.local/state}/review-triple/runs/` 以下にクローンし、書き込み権限を外して子に読ませる。子は呼び出し元・型・テストなどを自分で探索して裏付けを取れる。未コミットの変更はクローンに含まれないので、`diff` に必ず入れる。
+
+完了条件: 意図と対象をユーザーへ明示でき、`diff` にレビュー対象の変更がすべて入っている。`--repo` を使わない場合は、必要な呼び出し経路や制約の有無が packet から判別でき、不足が残るなら不足箇所も明示する。
 
 ## 2. 同一入力で三つのレビューを実行する
 
@@ -34,12 +36,12 @@ disable-model-invocation: true
 
 ```sh
 node "$SKILL_DIR/scripts/run-reviewers.mjs" \
-  --packet "$PACKET" --output "$OUTPUT"
+  --packet "$PACKET" --output "$OUTPUT" --repo "$REPO"
 ```
 
 デフォルトのモデルと reasoning effort の正本は [models.json](config/models.json)。利用者が明示的に選んだ場合のみ `--claude-model` / `--codex-model` / `--grok-model` と `--claude-effort` / `--codex-effort` / `--grok-effort` で個別に変更する。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-子は独立した一時作業場所で packet だけを検討する。対象リポジトリの探索・コマンド実行・書き込み、スキル・hook・MCP・再委譲は許可しない。runner がこの制限を適用できなければ失敗として扱い、制限を弱めて再実行しない。`plan` や `readonly` という名称だけで隔離を保証したことにしない。例外は `--grok-allow-no-sandbox` だけで、利用者が明示した場合に限って付ける。付けた場合は結果の報告で「Grok は sandbox なし（`grokSandbox: off`）」と明記する。
+子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。コマンド実行による書き込み・通信、スキル・hook・MCP・再委譲は許可しない（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。runner がこの制限を適用できなければ失敗として扱い、制限を弱めて再実行しない。`plan` や `readonly` という名称だけで隔離を保証したことにしない。例外は `--grok-allow-no-sandbox` だけで、利用者が明示した場合に限って付ける。付けた場合は結果の報告で「Grok は sandbox なし（`grokSandbox: off`）」と明記する。
 
 完了条件: runner 終了後、`manifest.json` の三件すべてに状態が記録されている。終了コード 1 の部分失敗でも次の判定に進み、失敗を「指摘なし」に置き換えない。`manifest.json` が無い場合は runner が途中で強制終了された（SIGKILL、起動元プロセスの異常終了など）とみなし、三件とも取得不可として扱う。途中の `.md` は完了したレビューとして読まず、新しい出力先で再実行する。
 
@@ -55,7 +57,7 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功した `{clau
 
 ## 4. リードが判定する
 
-[lead-judgment.md](references/lead-judgment.md) を読み、親が packet のコードと既知の制約に照らして決める。多数決や単純な要約で終えない。packet 内の呼び出し経路・引用・反証を使い、packet 外の挙動は「未確認」とする。不足が重要なら、必要な追加情報を具体的に示す。追加レビューは利用者の新たな明示依頼と新しい固定 packet で行う。
+[lead-judgment.md](references/lead-judgment.md) を読み、親が packet・対象リポジトリ・既知の制約に照らして決める。多数決や単純な要約で終えない。親自身も対象リポジトリを読んで、子が示した呼び出し経路・引用・反証を確かめる。確かめられない挙動は「未確認」とする。不足が重要なら、必要な追加情報を具体的に示す。追加レビューは利用者の新たな明示依頼と新しい固定 packet で行う。
 
 すべての指摘を、次のいずれか一つに分類する。却下した指摘も省略しない。
 
@@ -80,4 +82,4 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功した `{clau
 
 ## 由来
 
-cursor/plugins の pstack `interrogate` と四つの参照文書を日本語・固定 packet 方式へ改変した。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。
+cursor/plugins の pstack `interrogate` と四つの参照文書を日本語化し、Cursor の Task を三つの CLI 呼び出しへ置き換えた。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

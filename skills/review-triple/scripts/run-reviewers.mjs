@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
@@ -23,8 +23,10 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --claude-effort <値>         Claudeのreasoning effort（既定は config/models.json）
   --codex-effort <値>          Codexのreasoning effort（同上）
   --grok-effort <値>           Grokのreasoning effort（同上）
+  --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する
+  --ref <コミット>              --repoで読ませるコミット（既定 HEAD）
   --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
-  --timeout <秒>                各CLIの制限時間（既定 600、最大3600）
+  --timeout <秒>                各CLIの制限時間（既定 1200、最大3600）
   --help                       説明のみ表示
 
 資料: {"intent":"変更の意図","diff":"差分または変更コード","context":[{"path":"パス","content":"周辺コード"}]}
@@ -37,8 +39,8 @@ async function loadInput() {
     packet: { type: 'string' }, output: { type: 'string' },
     'claude-model': { type: 'string' }, 'codex-model': { type: 'string' }, 'grok-model': { type: 'string' },
     'claude-effort': { type: 'string' }, 'codex-effort': { type: 'string' }, 'grok-effort': { type: 'string' },
-    timeout: { type: 'string', default: '600' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
-    help: { type: 'boolean' },
+    timeout: { type: 'string', default: '1200' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
+    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' },
   } });
   if (values.help) return null;
   if (process.env.REVIEW_TRIPLE_DEPTH) throw new Error('子レビューからのreview-triple再起動は禁止です。');
@@ -67,17 +69,31 @@ async function loadInput() {
   if (!Array.isArray(context) || context.some(file => typeof file?.path !== 'string' || !file.path.trim() || typeof file.content !== 'string')) {
     throw new Error('資料のcontextは{path, content}の配列が必要です。');
   }
+  let repo = null;
+  if (values.repo) {
+    const path = await realpath(resolve(values.repo)).catch(() => { throw new Error(`--repoが見つかりません: ${values.repo}`); });
+    const commit = (await execFileAsync('git', ['-C', path, 'rev-parse', '--verify', '--end-of-options', `${values.ref}^{commit}`])
+      .catch(() => { throw new Error(`--repoのgitリポジトリで--ref ${values.ref}を解決できません。`); })).stdout.trim();
+    repo = { path, ref: values.ref, commit };
+  } else if (values.ref !== 'HEAD') {
+    throw new Error('--refは--repoと一緒に指定してください。');
+  }
   const [template, rubric, quality] = await Promise.all(
     ['reviewer-prompt.md', 'rubric.md', 'code-quality-review.md'].map(name => readFile(join(skillDir, 'references', name), 'utf8')),
   );
-  const replacements = {
-    INTENT: packet.intent,
-    DIFF_OR_FILES: JSON.stringify({ diff: packet.diff, context }, null, 2),
-    RUBRIC_CONTENTS: rubric,
-    CODE_QUALITY_CONTENTS: quality,
+  const buildPrompt = snapshot => {
+    const replacements = {
+      INTENT: packet.intent,
+      DIFF_OR_FILES: JSON.stringify({ diff: packet.diff, context }, null, 2),
+      RUBRIC_CONTENTS: rubric,
+      CODE_QUALITY_CONTENTS: quality,
+      REPOSITORY_SCOPE: snapshot
+        ? `対象リポジトリのスナップショット（コミット ${repo.commit}）を \`${snapshot}\` に読み取り専用で置いています。呼び出し元・型・テスト・隣接モジュールなど、判断に必要なファイルは自由に読んで裏付けを取ってください。ファイルを読むだけのコマンド（\`rg\`、\`grep\`、\`sed -n\`、\`cat\`、\`ls\`、\`git log\` / \`git show\` など）や読み取り用ツールは使ってかまいません。未コミットの変更はスナップショットに含まれないため、上の差分を正とします。このディレクトリの外は読みません。`
+        : '判断材料はこの入力だけです。ファイルパスは出典ラベルであり、読み取り権限ではありません。対象リポジトリは提供されていないので探索しません。',
+    };
+    return template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS|REPOSITORY_SCOPE)\}/g, (_, key) => replacements[key]);
   };
-  const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/g, (_, key) => replacements[key]);
-  return { models, efforts, timeoutMs, prompt, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+  return { models, efforts, timeoutMs, buildPrompt, repo, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
 }
 
 function execute(invocation, timeoutMs, abortSignal) {
@@ -154,7 +170,7 @@ async function review(provider, adapter, input, workRoot, abortSignal) {
     await mkdir(workDir, { mode: 0o700 });
     const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel,
       effort: result.requestedEffort, workDir,
-      grokAllowNoSandbox: input.grokAllowNoSandbox,
+      grokAllowNoSandbox: input.grokAllowNoSandbox, repo: input.snapshot,
       promptPath: join(input.output, 'prompt.md'), prompt: input.prompt });
     if (abortSignal.aborted) throw new Error('レビューを中断しました。');
     const processResult = await execute({ ...invocation, command: result.cliPath }, input.timeoutMs, abortSignal);
@@ -181,17 +197,57 @@ async function review(provider, adapter, input, workRoot, abortSignal) {
   return result;
 }
 
+function isAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
+
+async function removeStaleSnapshots(runs) {
+  for (const name of await readdir(runs)) {
+    const runDir = join(runs, name);
+    const pid = Number(await readFile(join(runDir, 'pid'), 'utf8').catch(() => ''));
+    const ageMs = Date.now() - (await stat(runDir).catch(() => null))?.mtimeMs;
+    if (pid ? !isAlive(pid) : ageMs > 60_000) await removeSnapshot(runDir);
+  }
+}
+
+async function createSnapshot(repo) {
+  const runs = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-triple', 'runs');
+  await mkdir(runs, { recursive: true, mode: 0o700 });
+  await removeStaleSnapshots(runs);
+  const runDir = await mkdtemp(join(runs, 'run-'));
+  await writeFile(join(runDir, 'pid'), String(process.pid), { mode: 0o600 });
+  const src = join(runDir, 'src');
+  try {
+    await execFileAsync('git', ['clone', '--quiet', '--local', '--no-checkout', '--', repo.path, src]);
+    await execFileAsync('git', ['-C', src, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--detach', repo.commit]);
+    await execFileAsync('chmod', ['-R', 'a-w', src]);
+  } catch (error) {
+    await removeSnapshot(runDir);
+    throw new Error(`対象リポジトリのクローンに失敗しました: ${error.message}`);
+  }
+  return { runDir, src };
+}
+
+async function removeSnapshot(runDir) {
+  await execFileAsync('chmod', ['-R', 'u+w', runDir]).catch(() => {});
+  await rm(runDir, { recursive: true, force: true });
+}
+
 async function main() {
   let input;
+  let snapshot = null;
   try {
     input = await loadInput();
-    if (input) await mkdir(input.output, { mode: 0o700 });
+    if (!input) { console.log(help); return; }
+    await mkdir(input.output, { mode: 0o700 });
+    if (input.repo) snapshot = await createSnapshot(input.repo);
   } catch (error) {
     console.error(error.code === 'EEXIST' ? `出力先が既に存在します: ${input.output}` : error.message);
     process.exitCode = 2;
     return;
   }
-  if (!input) { console.log(help); return; }
+  input.snapshot = snapshot?.src ?? null;
+  input.prompt = input.buildPrompt(input.snapshot);
   await writeFile(join(input.output, 'prompt.md'), input.prompt, { mode: 0o600, flag: 'wx' });
   const workRoot = await mkdtemp(join(tmpdir(), 'review-triple-'));
   const controller = new AbortController();
@@ -203,7 +259,7 @@ async function main() {
     const reviewers = await Promise.all(Object.entries(adapters).map(([provider, adapter]) =>
       review(provider, adapter, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 1, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required',
+    const manifest = { schemaVersion: 1, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repo,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
@@ -214,6 +270,7 @@ async function main() {
     controller.abort();
     for (const signal of signals) process.removeListener(signal, interrupt);
     await rm(workRoot, { recursive: true, force: true });
+    if (snapshot) await removeSnapshot(snapshot.runDir);
   }
 }
 

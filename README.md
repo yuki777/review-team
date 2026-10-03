@@ -2,7 +2,7 @@
 
 Claude・Codex・Grok に同じ変更を独立にレビューさせ、親のリードが全指摘を根拠付きで判定するスキルです。モデル別の人格は割り当てません。コードの修正は行いません。
 
-一つの固定 **packet**（意図・差分・必要な周辺コード）を三つの CLI に渡します。子にリポジトリ探索を許す方式ではなく、提供した範囲だけを評価する方式です。入力と未確認範囲を追跡しやすくし、レビュー中の実行・書き込みを制限するための選択です。
+意図・差分・必要な周辺コードをまとめた **packet** を三つの CLI に渡します。`--repo` で対象リポジトリを指定すると、pstack interrogate と同じく、各レビュアーがリポジトリを読み取り専用で探索して裏付けを取れます。レビュアーが読むのはユーザーの作業ツリーではなく、runner が作る書き込み不可のクローンです。
 
 ## 前提
 
@@ -81,10 +81,28 @@ SKILL_DIR="$HOME/git/review-triple/skills/review-triple"
 OUTPUT="$HOME/review-triple-result-$(date +%Y%m%d-%H%M%S)"
 node "$SKILL_DIR/scripts/run-reviewers.mjs" --help
 node "$SKILL_DIR/scripts/run-reviewers.mjs" \
-  --packet "$PACKET" --output "$OUTPUT" --timeout 600
+  --packet "$PACKET" --output "$OUTPUT" --timeout 1200
 ```
 
-`--packet` と `--output` は絶対パスです。出力先は未作成でなければなりません。runner は一度コンパイルした同じ `prompt.md` を三つの CLI に渡し、独立した一時作業場所で並列実行します。子の追加探索、実行、書き込み、再レビュー起動は行いません。
+`--packet` と `--output` は絶対パスです。出力先は未作成でなければなりません。runner は一度コンパイルした同じ `prompt.md` を三つの CLI に渡し、独立した一時作業場所で並列実行します。子のコマンドによる書き込み・通信、再レビュー起動は行いません。
+
+### 対象リポジトリを読ませる（`--repo`）
+
+```sh
+node "$SKILL_DIR/scripts/run-reviewers.mjs" \
+  --packet "$PACKET" --output "$OUTPUT" --repo "$HOME/git/my-project" --ref HEAD
+```
+
+- runner は `--ref`（既定 `HEAD`）のコミットを `${XDG_STATE_HOME:-$HOME/.local/state}/review-triple/runs/run-*/src` に `git clone --local` し、書き込み権限を外してから三つの CLI に読ませます。実行が終わるとクローンを削除します。
+- 未コミットの変更はクローンに含まれません。packet の `diff` に入れてください。
+- CLI ごとの読み方は次のとおりです。
+  - Claude: `Read` / `Grep` / `Glob` だけを許可し、`--add-dir` でクローンを追加します。読めるのは作業場所とクローンだけです。
+  - Codex: ファイルを読むためにシェルを使います。read-only sandbox が書き込みと通信を止めますが、読み取りはクローンの外にも及びます。
+  - Grok: 読み取り・一覧・grep・glob のツールだけを許可し、書き込み・シェル・Web は拒否します。
+- クローン内の `AGENTS.md` や `CLAUDE.md` は指示として読み込まず、検討対象データとして扱います。
+- `manifest.json` の `repository` に、元のパス・`ref`・コミット ID を記録します。
+
+`--repo` を指定しない場合は、packet だけでレビューします。
 
 デフォルト値の正本は [skills/review-triple/config/models.json](skills/review-triple/config/models.json) です。
 
@@ -108,7 +126,7 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" \
   --grok-effort medium
 ```
 
-自動 fallback・自動 retry はありません。利用不能なモデルを別モデルに置き換えず、失敗した reviewer を「指摘なし」に数えません。`--timeout` は秒（既定 600、上限 3600）。`REVIEW_TRIPLE_DEPTH` が空でない子プロセスからの runner 起動は拒否します。
+自動 fallback・自動 retry はありません。利用不能なモデルを別モデルに置き換えず、失敗した reviewer を「指摘なし」に数えません。`--timeout` は秒（既定 1200、上限 3600。`--repo` で探索すると Grok は約9分かかった実績があります）。`REVIEW_TRIPLE_DEPTH` が空でない子プロセスからの runner 起動は拒否します。
 
 終了コードは `0`: 三件成功、`1`: 一件以上の実行失敗、`2`: 不正な起動です。部分失敗でも取得できた指摘は親が判定し、欠けたレビューを明示します。
 
@@ -169,14 +187,14 @@ Paseo がリモート daemon やコンテナを管理している場合、手元
 
 - packet のコードと説明は **三つの外部 provider** へ送信されます。各サービスの保存・学習・契約ポリシーを確認し、秘密鍵、token、個人情報、送信禁止コードを事前に除去してください。
 - packet、prompt、結果、raw ログはローカルにもコードを残します。出力先は非公開にし、共有前に機密を確認してください。認証済み CLI は必要ですが、認証情報を packet やモデル引数に入れません。
-- 親は明示された対象から事前に情報を集めます。子は packet だけを読み、対象コード・テスト・未提供の呼び出し元を実行や探索で確かめません。不足は未確認範囲として返します。
+- 子は packet と（`--repo` 指定時は）読み取り専用のクローンだけを読みます。テストやビルドは実行しません。確かめられない点は未確認範囲として返します。
 - CLI の制限を適用する設計であり、独立した OS セキュリティ境界や外部 provider の内部動作を保証するものではありません。設定不足や未対応 CLI は fail-closed に扱います。
 - Grok は既定で read-only sandbox を必須にしています。`/var/run/docker.sock` がシンボリックリンクの macOS（OrbStack や Docker Desktop の一部構成）では、Grok 1.0.46 の sandbox 自体が起動を拒否し、Grok のレビューは `sandbox_error` になります。この環境では `--grok-allow-no-sandbox` を明示すると sandbox なしで起動します。その場合も、使えるツールは `read_file` だけ、全操作は `--deny '*'` で拒否、作業場所は空の一時ディレクトリです。ただし OS レベルの読み取り・ネットワーク制限はかかりません。`manifest.json` の `grokSandbox` に `off` と記録されます。自動で sandbox なしに切り替えることはありません。
 - モデルの一致、CLI の成功、綺麗な Markdown は正しさの証明ではありません。対象コードの修正、テスト実行、コミット、PR 操作はレビュー後の別作業です。
 
 ## 出典とライセンス
 
-pstack 本体への実行時依存はありません。次の原文を確認し、日本語・固定 packet・自動 fallback なしの方式へ改変して同梱しています。
+pstack 本体への実行時依存はありません。次の原文を確認し、日本語化と CLI 呼び出しへの置き換え、自動 fallback なしの方式へ改変して同梱しています。
 
 - [cursor/plugins: pstack interrogate](https://github.com/cursor/plugins/tree/main/pstack/skills/interrogate)
 - 原文の四つの参照: [reviewer-prompt](https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/interrogate/references/reviewer-prompt.md)、[rubric](https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/interrogate/references/rubric.md)、[code-quality-review](https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/interrogate/references/code-quality-review.md)、[lead-judgment](https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/interrogate/references/lead-judgment.md)

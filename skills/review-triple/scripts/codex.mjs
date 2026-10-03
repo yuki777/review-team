@@ -1,13 +1,14 @@
 import { classifyError } from './errors.mjs';
 
 const disabledFeatures = [
-  'shell_tool', 'unified_exec', 'hooks', 'apps', 'plugins', 'multi_agent',
-  'multi_agent_v2', 'browser_use', 'computer_use', 'code_mode_host', 'image_generation',
+  'hooks', 'apps', 'plugins', 'multi_agent', 'multi_agent_v2', 'browser_use', 'computer_use', 'image_generation',
 ];
+// Codex reads files only through shell commands. Without a repository these are not needed.
+const shellFeatures = ['shell_tool', 'unified_exec', 'code_mode_host'];
 
 export const codex = {
   command: 'codex',
-  async prepare({ model, effort, workDir, prompt }) {
+  async prepare({ model, effort, workDir, prompt, repo }) {
     return {
       cwd: workDir,
       args: ['exec', '--ignore-user-config', '--ignore-rules', '--skip-git-repo-check',
@@ -17,7 +18,7 @@ export const codex = {
         '-c', 'project_doc_max_bytes=0', '-c', 'skills.include_instructions=false',
         '-c', 'web_search="disabled"', '-c', 'agents.enabled=false',
         '--enable', 'skip_host_skill_discovery', '--disable', 'skill_search',
-        ...disabledFeatures.flatMap(feature => ['--disable', feature]), '-'],
+        ...[...disabledFeatures, ...(repo ? [] : shellFeatures)].flatMap(feature => ['--disable', feature]), '-'],
       env: {}, stdin: prompt,
     };
   },

@@ -2,14 +2,15 @@ import { classifyError } from './errors.mjs';
 
 export const claude = {
   command: 'claude',
-  async prepare({ model, effort, workDir, prompt }) {
+  async prepare({ model, effort, workDir, prompt, repo }) {
     return {
       cwd: workDir,
       args: ['--print', '--model', model, '--effort', effort, '--output-format', 'json',
         '--safe-mode', '--restricted', '--setting-sources', '',
         '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-        '--disable-slash-commands', '--tools', '', '--permission-mode', 'dontAsk',
-        '--permission-prompts', 'none', '--no-session-persistence'],
+        '--disable-slash-commands', '--permission-mode', 'dontAsk',
+        '--permission-prompts', 'none', '--no-session-persistence',
+        ...(repo ? ['--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob', '--add-dir', repo] : ['--tools', ''])],
       env: { CLAUDECODE: null, CLAUDE_CODE_ENTRYPOINT: null }, stdin: prompt,
     };
   },
