@@ -36,6 +36,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   await writeFile(join(stale, 'pid'), '999999');
   await writeFile(join(stale, 'src', 'old.js'), 'old\n');
   execFileSync('chmod', ['-R', 'a-w', join(stale, 'src')]);
+  const objectModesBefore = await objectModes(repo);
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
     '--output', join(dir, 'out'), '--repo', repo, '--ref', first, '--timeout', '30'], {
     stdio: 'ignore',
@@ -50,12 +51,19 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   assert.equal(lines.writable, 'no');
   await assert.rejects(stat(lines.clone));
   assert.deepEqual(await readdir(join(state, 'review-team', 'runs')), []);
+  assert.deepEqual(await objectModes(repo), objectModesBefore);
 
   const manifest = JSON.parse(await readFile(join(dir, 'out', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.repository, { path: await realpath(repo), ref: first, commit: first });
   assert.match(await readFile(join(dir, 'out', 'prompt.md'), 'utf8'), new RegExp(`コミット ${first}`));
   await rm(dir, { recursive: true, force: true });
 });
+
+async function objectModes(repo) {
+  const objects = join(repo, '.git', 'objects');
+  const files = (await readdir(objects, { recursive: true })).sort();
+  return Promise.all(files.map(async file => [file, ((await stat(join(objects, file))).mode & 0o777).toString(8)]));
+}
 
 test('--refを解決できなければ起動前に拒否する', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));

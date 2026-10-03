@@ -62,10 +62,32 @@ npx skills remove review-team -g
 | --- | --- |
 | `/review-team Claude Opus 5.5 と Claude Fable 5.1 と GPT 6 Astra でレビューして` | レビュアーの組み合わせを変える。同じ CLI の別モデルも並べられる |
 | `/review-team Claude は effort max でレビューして` | レビュアーごとの reasoning effort を変える |
-| `/review-team Grok は sandbox なしでレビューして` | Grok の sandbox を使わずに起動する（下の「注意」を参照） |
+| `/review-team Grok は sandbox なしでレビューして` | Grok の sandbox を使わずに起動する（OrbStack など、Grok の sandbox が起動しない環境向け） |
 | `/review-team リポジトリは読ませずに差分だけでレビューして` | クローンを渡さず、まとめた資料だけでレビューする |
 | `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
 | `/review-team 制限時間30分でレビューして` | レビュアーごとの制限時間を変える（既定20分） |
+
+### レビュアーをオプションで指定する
+
+`--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
+
+既定と同じ3人（Claude Fable 5.1・Codex GPT 6 Astra・Grok 4.7）を明示する場合:
+
+```
+/review-team --reviewer claude:claude-fable-5-1:high --reviewer codex:gpt-6-astra:high --reviewer grok:grok-4.7:high [PR-URL or PR-Number or Branch]
+```
+
+Grok のサブスクリプションがない場合（Claude 2人と Codex 1人）:
+
+```
+/review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high [PR-URL or PR-Number or Branch]
+```
+
+Grok と Codex のサブスクリプションがない場合（Claude 3人）:
+
+```
+/review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer claude:claude-sonnet-5-5:high [PR-URL or PR-Number or Branch]
+```
 
 既定のレビュアーの一覧は `~/.agents/skills/review-team/config/reviewers.json` にあります。このファイルは更新のたびに上書きされるので、組み合わせを変えたいときは頼むときに指定してください。
 

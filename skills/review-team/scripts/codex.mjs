@@ -35,6 +35,9 @@ export const codex = {
       const message = messages.at(-1) || stderr.trim() || 'Codexのレビューが完了していません。';
       return { text, actualModels, error: { kind: classifyError(message), message } };
     }
+    if (!header) {
+      return { text, actualModels, error: { kind: 'sandbox_error', message: 'Codexのsandbox設定を出力から確認できません。' } };
+    }
     return { text, actualModels, error: null };
   },
 };

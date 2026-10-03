@@ -37,7 +37,7 @@ async function loadInput() {
     packet: { type: 'string' }, output: { type: 'string' },
     reviewer: { type: 'string', multiple: true },
     timeout: { type: 'string', default: '1200' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
-    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' },
+    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, help: { type: 'boolean' },
   } });
   if (values.help) return null;
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからのreview-team再起動は禁止です。');
@@ -227,7 +227,9 @@ async function createSnapshot(repo) {
   await writeFile(join(runDir, 'pid'), String(process.pid), { mode: 0o600 });
   const src = join(runDir, 'src');
   try {
-    await execFileAsync('git', ['clone', '--quiet', '--local', '--no-checkout', '--', repo.path, src]);
+    // --shared reads the user's objects through alternates instead of hardlinking them,
+    // so the chmod below and the cleanup never touch files of the user's repository.
+    await execFileAsync('git', ['clone', '--quiet', '--shared', '--no-checkout', '--', repo.path, src]);
     await execFileAsync('git', ['-C', src, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--detach', repo.commit]);
     await execFileAsync('chmod', ['-R', 'a-w', src]);
   } catch (error) {
