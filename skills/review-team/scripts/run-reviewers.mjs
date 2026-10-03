@@ -14,15 +14,13 @@ import { classifyError } from './errors.mjs';
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const adapters = { claude, codex, grok };
 const execFileAsync = promisify(execFile);
-const help = `review-triple: 同一資料を3つのCLIで独立レビューします。
+const help = `review-team: 同一資料を複数のCLI・モデルで独立レビューします。
 
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
-  --claude-model <ID>          Claudeのモデル（既定は config/models.json）
-  --codex-model <ID>           Codexのモデル（同上）
-  --grok-model <ID>            Grokのモデル（同上）
-  --claude-effort <値>         Claudeのreasoning effort（既定は config/models.json）
-  --codex-effort <値>          Codexのreasoning effort（同上）
-  --grok-effort <値>           Grokのreasoning effort（同上）
+  --reviewer <cli>:<model>[:<effort>]
+                               レビュアーを1人追加する（繰り返し指定可）。指定すると config/reviewers.json の一覧を置き換える
+                               cli は claude / codex / grok。effort の既定は high
+                               例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-1:max --reviewer codex:gpt-6-astra
   --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する
   --ref <コミット>              --repoで読ませるコミット（既定 HEAD）
   --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
@@ -31,36 +29,23 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
 
 資料: {"intent":"変更の意図","diff":"差分または変更コード","context":[{"path":"パス","content":"周辺コード"}]}
 出力: manifest.json、共通prompt.md、各CLIのレビュー本文と実行ログ
-終了コード: 0=3件完了、1=不足あり、2=引数または資料の不備
+終了コード: 0=全員完了、1=不足あり、2=引数または資料の不備
 `;
 
 async function loadInput() {
   const { values } = parseArgs({ options: {
     packet: { type: 'string' }, output: { type: 'string' },
-    'claude-model': { type: 'string' }, 'codex-model': { type: 'string' }, 'grok-model': { type: 'string' },
-    'claude-effort': { type: 'string' }, 'codex-effort': { type: 'string' }, 'grok-effort': { type: 'string' },
+    reviewer: { type: 'string', multiple: true },
     timeout: { type: 'string', default: '1200' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
     repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' },
   } });
   if (values.help) return null;
-  if (process.env.REVIEW_TRIPLE_DEPTH) throw new Error('子レビューからのreview-triple再起動は禁止です。');
+  if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからのreview-team再起動は禁止です。');
   if (process.platform === 'win32') throw new Error('このランナーはPOSIX環境で実行してください。');
   if (!values.packet || !values.output) throw new Error('--packetと--outputが必要です。');
   const timeoutMs = Number(values.timeout) * 1000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3600000) throw new Error('--timeoutは0より大きく3600以下の秒数にしてください。');
-  const defaults = JSON.parse(await readFile(join(skillDir, 'config', 'models.json'), 'utf8'));
-  const models = {};
-  const efforts = {};
-  for (const provider of Object.keys(adapters)) {
-    models[provider] = values[`${provider}-model`] ?? defaults[provider]?.model;
-    efforts[provider] = values[`${provider}-effort`] ?? defaults[provider]?.effort;
-    if (typeof models[provider] !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(models[provider])) {
-      throw new Error(`${provider}のモデルIDが不正です。`);
-    }
-    if (typeof efforts[provider] !== 'string' || !/^[a-z]+$/.test(efforts[provider])) {
-      throw new Error(`${provider}のreasoning effortが不正です。`);
-    }
-  }
+  const reviewers = await loadReviewers(values.reviewer);
   const packet = JSON.parse(await readFile(resolve(values.packet), 'utf8'));
   for (const key of ['intent', 'diff']) {
     if (typeof packet?.[key] !== 'string' || !packet[key].trim()) throw new Error(`資料の${key}は空でない文字列が必要です。`);
@@ -93,12 +78,35 @@ async function loadInput() {
     };
     return template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS|REPOSITORY_SCOPE)\}/g, (_, key) => replacements[key]);
   };
-  return { models, efforts, timeoutMs, buildPrompt, repo, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+  return { reviewers, timeoutMs, buildPrompt, repo, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+}
+
+const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
+async function loadReviewers(specs) {
+  const entries = specs?.length
+    ? specs.map(spec => {
+      const [cli, model, effort, ...rest] = spec.split(':');
+      if (rest.length) throw new Error(`--reviewerは<cli>:<model>[:<effort>]で指定してください: ${spec}`);
+      return { cli, model, effort };
+    })
+    : JSON.parse(await readFile(join(skillDir, 'config', 'reviewers.json'), 'utf8')).reviewers;
+  if (!Array.isArray(entries) || !entries.length) throw new Error('レビュアーを1人以上指定してください。');
+  const totals = {};
+  for (const { cli } of entries) totals[cli] = (totals[cli] ?? 0) + 1;
+  const seen = {};
+  return entries.map(({ cli, model, effort = 'high' }) => {
+    if (!Object.hasOwn(adapters, cli)) throw new Error(`未対応のCLIです: ${cli}（claude / codex / grok）`);
+    if (typeof model !== 'string' || !modelPattern.test(model)) throw new Error(`${cli}のモデルIDが不正です: ${model}`);
+    if (typeof effort !== 'string' || !/^[a-z]+$/.test(effort)) throw new Error(`${cli}のreasoning effortが不正です: ${effort}`);
+    seen[cli] = (seen[cli] ?? 0) + 1;
+    return { id: totals[cli] > 1 ? `${cli}-${seen[cli]}` : cli, cli, model, effort };
+  });
 }
 
 function execute(invocation, timeoutMs, abortSignal) {
   return new Promise(resolveResult => {
-    const env = { ...process.env, REVIEW_TRIPLE_DEPTH: '1' };
+    const env = { ...process.env, REVIEW_TEAM_DEPTH: '1' };
     for (const [key, value] of Object.entries(invocation.env ?? {})) {
       if (value === null) delete env[key];
       else env[key] = value;
@@ -149,24 +157,25 @@ function execute(invocation, timeoutMs, abortSignal) {
   });
 }
 
-async function review(provider, adapter, input, workRoot, abortSignal) {
+async function review({ id, cli, model, effort }, input, workRoot, abortSignal) {
+  const adapter = adapters[cli];
   const started = performance.now();
-  const result = { provider, requestedModel: input.models[provider], requestedEffort: input.efforts[provider],
+  const result = { id, cli, requestedModel: model, requestedEffort: effort,
     actualModels: [], modelEvidence: 'unknown', status: 'error',
     cliPath: null, cliVersion: null, exitCode: null, signal: null, durationMs: 0, error: null,
-    outputFile: `${provider}.md`, stdoutFile: `${provider}.stdout.log`, stderrFile: `${provider}.stderr.log` };
+    outputFile: `${id}.md`, stdoutFile: `${id}.stdout.log`, stderrFile: `${id}.stderr.log` };
   let stdout = '';
   let stderr = '';
   let text = '';
   try {
-    const command = process.env[`REVIEW_TRIPLE_${provider.toUpperCase()}_CLI`] || adapter.command;
+    const command = process.env[`REVIEW_TEAM_${cli.toUpperCase()}_CLI`] || adapter.command;
     try {
       result.cliPath = (await execFileAsync('/bin/sh', ['-c', 'command -v "$1"', 'sh', command], { signal: abortSignal })).stdout.trim();
       result.cliVersion = (await execFileAsync(result.cliPath, ['--version'], { timeout: 10000, signal: abortSignal })).stdout.trim();
     } catch {
       throw new Error(abortSignal.aborted ? 'レビューを中断しました。' : `${command} CLIが見つからないか、バージョンを取得できません。`);
     }
-    const workDir = join(workRoot, provider);
+    const workDir = join(workRoot, id);
     await mkdir(workDir, { mode: 0o700 });
     const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel,
       effort: result.requestedEffort, workDir,
@@ -211,7 +220,7 @@ async function removeStaleSnapshots(runs) {
 }
 
 async function createSnapshot(repo) {
-  const runs = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-triple', 'runs');
+  const runs = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-team', 'runs');
   await mkdir(runs, { recursive: true, mode: 0o700 });
   await removeStaleSnapshots(runs);
   const runDir = await mkdtemp(join(runs, 'run-'));
@@ -249,22 +258,22 @@ async function main() {
   input.snapshot = snapshot?.src ?? null;
   input.prompt = input.buildPrompt(input.snapshot);
   await writeFile(join(input.output, 'prompt.md'), input.prompt, { mode: 0o600, flag: 'wx' });
-  const workRoot = await mkdtemp(join(tmpdir(), 'review-triple-'));
+  const workRoot = await mkdtemp(join(tmpdir(), 'review-team-'));
   const controller = new AbortController();
   const interrupt = () => controller.abort();
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
   for (const signal of signals) process.on(signal, interrupt);
   const startedAt = new Date().toISOString();
   try {
-    const reviewers = await Promise.all(Object.entries(adapters).map(([provider, adapter]) =>
-      review(provider, adapter, input, workRoot, controller.signal)));
+    const reviewers = await Promise.all(input.reviewers.map(reviewer =>
+      review(reviewer, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 1, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repo,
+    const manifest = { schemaVersion: 2, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repo,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
     console.log(JSON.stringify({ complete, manifest: join(input.output, 'manifest.json'),
-      reviewers: reviewers.map(({ provider, status, actualModels }) => ({ provider, status, actualModels })) }, null, 2));
+      reviewers: reviewers.map(({ id, status, actualModels }) => ({ id, status, actualModels })) }, null, 2));
     process.exitCode = complete ? 0 : 1;
   } finally {
     controller.abort();

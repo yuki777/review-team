@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyError } from '../skills/review-triple/scripts/errors.mjs';
-import { claude } from '../skills/review-triple/scripts/claude.mjs';
-import { codex } from '../skills/review-triple/scripts/codex.mjs';
-import { grok } from '../skills/review-triple/scripts/grok.mjs';
+import { classifyError } from '../skills/review-team/scripts/errors.mjs';
+import { claude } from '../skills/review-team/scripts/claude.mjs';
+import { codex } from '../skills/review-team/scripts/codex.mjs';
+import { grok } from '../skills/review-team/scripts/grok.mjs';
 
 for (const [message, expected] of [
   ["The 'gpt-6-astra' model requires a newer version of Codex.", 'model_unavailable'],
@@ -54,7 +54,7 @@ function grokOutput({ tools = ['read_file', 'list_dir', 'grep', 'glob'], content
   return [
     { type: 'system', subtype: 'init', session_id: 'grok-review', model: 'requested-model',
       permissionMode: 'dontAsk', tools, mcp_servers: [], skills: [], slash_commands: [],
-      cwd: '/private/tmp/review-triple', uuid: 'init' },
+      cwd: '/private/tmp/review-team', uuid: 'init' },
     { type: 'assistant', message: { id: 'msg_0', type: 'message', role: 'assistant',
       model: 'grok-4.7', content: content ?? [{ type: 'text', text: '私は別のモデルです。減算なので不具合です。' }],
       stop_reason: content?.some(block => block.type === 'tool_use') ? 'tool_use' : 'end_turn',

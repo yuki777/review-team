@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const usage = `使い方: node install.mjs [--home <絶対パス>] [--help]
 
-review-triple を次の二か所へシンボリックリンクで登録します。
-  ~/.claude/skills/review-triple
-  ~/.agents/skills/review-triple
+review-team を次の二か所へシンボリックリンクで登録します。
+  ~/.claude/skills/review-team
+  ~/.agents/skills/review-team
 
 --home <絶対パス>  登録先のホームを指定（既定: 現在のユーザーのホーム）
 --help             この説明だけを表示し、ファイルを変更しません
@@ -85,8 +85,8 @@ async function main() {
     const source = await realpath(fileURLToPath(new URL('../', import.meta.url)));
     await access(join(source, 'SKILL.md'));
     const destinations = [
-      join(home, '.claude', 'skills', 'review-triple'),
-      join(home, '.agents', 'skills', 'review-triple'),
+      join(home, '.claude', 'skills', 'review-team'),
+      join(home, '.agents', 'skills', 'review-team'),
     ];
 
     // 既知の衝突は、どちらの登録先も変更する前に拒否する。

@@ -5,10 +5,10 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const runner = new URL('../skills/review-triple/scripts/run-reviewers.mjs', import.meta.url).pathname;
+const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
 test('--repoは指定コミットの書き込み不可クローンを渡し、終了後と次回起動時に削除する', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'review-triple-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   const repo = join(dir, 'repo');
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
   execFileSync('git', ['init', '-q', repo]);
@@ -31,7 +31,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   await chmod(cli, 0o755);
   await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '意図', diff: '差分' }));
   const state = join(dir, 'state');
-  const stale = join(state, 'review-triple', 'runs', 'run-stale');
+  const stale = join(state, 'review-team', 'runs', 'run-stale');
   await mkdir(join(stale, 'src'), { recursive: true });
   await writeFile(join(stale, 'pid'), '999999');
   await writeFile(join(stale, 'src', 'old.js'), 'old\n');
@@ -40,16 +40,16 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
     '--output', join(dir, 'out'), '--repo', repo, '--ref', first, '--timeout', '30'], {
     stdio: 'ignore',
     env: { ...process.env, TMPDIR: dir, XDG_STATE_HOME: state,
-      REVIEW_TRIPLE_CLAUDE_CLI: cli, REVIEW_TRIPLE_CODEX_CLI: '/nonexistent', REVIEW_TRIPLE_GROK_CLI: '/nonexistent' },
+      REVIEW_TEAM_CLAUDE_CLI: cli, REVIEW_TEAM_CODEX_CLI: '/nonexistent', REVIEW_TEAM_GROK_CLI: '/nonexistent' },
   });
   await new Promise(resolve => child.on('exit', resolve));
 
   const lines = Object.fromEntries((await readFile(report, 'utf8')).trim().split('\n').map(line => line.split(/=(.*)/s).slice(0, 2)));
-  assert.match(lines.clone, new RegExp(`^${state}/review-triple/runs/run-[^/]+/src$`));
+  assert.match(lines.clone, new RegExp(`^${state}/review-team/runs/run-[^/]+/src$`));
   assert.equal(lines.content, 'v1');
   assert.equal(lines.writable, 'no');
   await assert.rejects(stat(lines.clone));
-  assert.deepEqual(await readdir(join(state, 'review-triple', 'runs')), []);
+  assert.deepEqual(await readdir(join(state, 'review-team', 'runs')), []);
 
   const manifest = JSON.parse(await readFile(join(dir, 'out', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.repository, { path: await realpath(repo), ref: first, commit: first });
@@ -58,7 +58,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
 });
 
 test('--refを解決できなければ起動前に拒否する', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'review-triple-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   execFileSync('git', ['init', '-q', join(dir, 'repo')]);
   await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '意図', diff: '差分' }));
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
