@@ -21,13 +21,15 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
                                レビュアーを1人追加する（繰り返し指定可）。指定すると config/reviewers.json の一覧を置き換える
                                cli は claude / codex / grok。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-1:max --reviewer codex:gpt-6-astra
+  --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
+                               PR の head を読み取り専用で探索させる。資料の diff と intent を省略すると PR から補う
   --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する
   --ref <コミット>              --repoで読ませるコミット（既定 HEAD）
   --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
   --timeout <秒>                各CLIの制限時間（既定 1200、最大3600）
   --help                       説明のみ表示
 
-資料: {"intent":"変更の意図","diff":"差分または変更コード","context":[{"path":"パス","content":"周辺コード"}]}
+資料: {"intent":"変更の意図","diff":"差分または変更コード","context":[{"path":"パス","content":"周辺コード"}]}（--pr のときは省略可）
 出力: manifest.json、共通prompt.md、各CLIのレビュー本文と実行ログ
 終了コード: 0=全員完了、1=不足あり、2=引数または資料の不備
 `;
@@ -37,31 +39,36 @@ async function loadInput() {
     packet: { type: 'string' }, output: { type: 'string' },
     reviewer: { type: 'string', multiple: true },
     timeout: { type: 'string', default: '1200' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
-    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, help: { type: 'boolean' },
+    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, pr: { type: 'string' }, help: { type: 'boolean' },
   } });
   if (values.help) return null;
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからのreview-team再起動は禁止です。');
   if (process.platform === 'win32') throw new Error('このランナーはPOSIX環境で実行してください。');
-  if (!values.packet || !values.output) throw new Error('--packetと--outputが必要です。');
+  if (!values.output || !(values.packet || values.pr)) throw new Error('--outputと、--packetまたは--prが必要です。');
   const timeoutMs = Number(values.timeout) * 1000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3600000) throw new Error('--timeoutは0より大きく3600以下の秒数にしてください。');
   const reviewers = await loadReviewers(values.reviewer);
-  const packet = JSON.parse(await readFile(resolve(values.packet), 'utf8'));
-  for (const key of ['intent', 'diff']) {
-    if (typeof packet?.[key] !== 'string' || !packet[key].trim()) throw new Error(`資料の${key}は空でない文字列が必要です。`);
-  }
-  const context = packet.context ?? [];
-  if (!Array.isArray(context) || context.some(file => typeof file?.path !== 'string' || !file.path.trim() || typeof file.content !== 'string')) {
-    throw new Error('資料のcontextは{path, content}の配列が必要です。');
-  }
+  const packet = values.packet ? JSON.parse(await readFile(resolve(values.packet), 'utf8')) : {};
+  if (values.pr && (values.repo || values.ref !== 'HEAD')) throw new Error('--prは--repo・--refと同時に指定できません。');
   let repo = null;
-  if (values.repo) {
+  if (values.pr) {
+    repo = await resolvePullRequest(values.pr);
+    packet.intent ??= [repo.pr.title, repo.pr.body].filter(Boolean).join('\n\n');
+    packet.diff ??= repo.pr.diff;
+  } else if (values.repo) {
     const path = await realpath(resolve(values.repo)).catch(() => { throw new Error(`--repoが見つかりません: ${values.repo}`); });
     const commit = (await execFileAsync('git', ['-C', path, 'rev-parse', '--verify', '--end-of-options', `${values.ref}^{commit}`])
       .catch(() => { throw new Error(`--repoのgitリポジトリで--ref ${values.ref}を解決できません。`); })).stdout.trim();
     repo = { path, ref: values.ref, commit };
   } else if (values.ref !== 'HEAD') {
     throw new Error('--refは--repoと一緒に指定してください。');
+  }
+  for (const key of ['intent', 'diff']) {
+    if (typeof packet?.[key] !== 'string' || !packet[key].trim()) throw new Error(`資料の${key}は空でない文字列が必要です。`);
+  }
+  const context = packet.context ?? [];
+  if (!Array.isArray(context) || context.some(file => typeof file?.path !== 'string' || !file.path.trim() || typeof file.content !== 'string')) {
+    throw new Error('資料のcontextは{path, content}の配列が必要です。');
   }
   const [template, rubric, quality] = await Promise.all(
     ['reviewer-prompt.md', 'rubric.md', 'code-quality-review.md'].map(name => readFile(join(skillDir, 'references', name), 'utf8')),
@@ -78,7 +85,37 @@ async function loadInput() {
     };
     return template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS|REPOSITORY_SCOPE)\}/g, (_, key) => replacements[key]);
   };
-  return { reviewers, timeoutMs, buildPrompt, repo, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+  const repository = repo && { path: repo.path, ref: repo.ref, commit: repo.commit,
+    ...(repo.pr && { pr: { url: repo.pr.url, number: repo.pr.number, base: repo.pr.base } }) };
+  return { reviewers, timeoutMs, buildPrompt, repo, repository, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+}
+
+function stateRoot() {
+  return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-team');
+}
+
+async function resolvePullRequest(spec) {
+  const view = await execFileAsync('gh', ['pr', 'view', spec, '--json', 'number,url,title,body,baseRefName'])
+    .catch(error => { throw new Error(`PRを取得できません: ${spec}（${error.stderr?.trim() || error.message}）`); });
+  const pr = JSON.parse(view.stdout);
+  const [, host, owner, name] = pr.url.match(/^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+$/) ?? [];
+  if (!host) throw new Error(`PRのURLを解釈できません: ${pr.url}`);
+  const cache = join(stateRoot(), 'repos', host, owner, name);
+  if (!await stat(join(cache, '.git')).catch(() => null)) {
+    await mkdir(dirname(cache), { recursive: true, mode: 0o700 });
+    await execFileAsync('gh', ['repo', 'clone', `https://${host}/${owner}/${name}`, cache, '--', '--quiet', '--no-checkout'])
+      .catch(error => { throw new Error(`リポジトリをクローンできません: ${host}/${owner}/${name}（${error.stderr?.trim() || error.message}）`); });
+  }
+  const git = (...args) => execFileAsync('git', ['-C', cache, ...args]).then(result => result.stdout.trim());
+  const headRef = `refs/review-team/pull/${pr.number}`;
+  await git('fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${pr.number}/head:${headRef}`)
+    .catch(error => { throw new Error(`PRのコミットを取得できません（${error.stderr?.trim() || error.message}）`); });
+  const commit = await git('rev-parse', '--verify', `${headRef}^{commit}`);
+  // gh pr diff compares against the base at PR time, so merged PRs still yield their own changes.
+  const diff = (await execFileAsync('gh', ['pr', 'diff', pr.url], { maxBuffer: 64 * 1024 * 1024 })
+    .catch(error => { throw new Error(`PRの差分を取得できません（${error.stderr?.trim() || error.message}）`); })).stdout;
+  return { path: cache, ref: `pull/${pr.number}/head`, commit,
+    pr: { url: pr.url, number: pr.number, title: pr.title, body: pr.body, base: pr.baseRefName, diff } };
 }
 
 const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -220,7 +257,7 @@ async function removeStaleSnapshots(runs) {
 }
 
 async function createSnapshot(repo) {
-  const runs = join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-team', 'runs');
+  const runs = join(stateRoot(), 'runs');
   await mkdir(runs, { recursive: true, mode: 0o700 });
   await removeStaleSnapshots(runs);
   const runDir = await mkdtemp(join(runs, 'run-'));
@@ -250,6 +287,7 @@ async function main() {
   try {
     input = await loadInput();
     if (!input) { console.log(help); return; }
+    await mkdir(dirname(input.output), { recursive: true, mode: 0o700 });
     await mkdir(input.output, { mode: 0o700 });
     if (input.repo) snapshot = await createSnapshot(input.repo);
   } catch (error) {
@@ -270,7 +308,7 @@ async function main() {
     const reviewers = await Promise.all(input.reviewers.map(reviewer =>
       review(reviewer, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 2, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repo,
+    const manifest = { schemaVersion: 2, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repository,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
