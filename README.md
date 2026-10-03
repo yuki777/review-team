@@ -91,6 +91,16 @@ Grok と Codex のサブスクリプションがない場合（Claude 3人）:
 
 既定のレビュアーの一覧は `~/.agents/skills/review-team/config/reviewers.json` にあります。このファイルは更新のたびに上書きされるので、組み合わせを変えたいときは頼むときに指定してください。
 
+### ワンライナー
+
+PR の URL を渡せば、どのディレクトリからでもレビューできます。対象リポジトリは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/repos/` に自動でクローンされ（2回目からは更新だけ）、手元のチェックアウトには触れません。
+
+```sh
+work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --grok-allow-no-sandbox <PR-URL>"
+```
+
+`--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）向けです。不要な環境では外してください。
+
 ## ライセンス
 
 MIT です。pstack interrogate から取り込んだ部分の著作権表示（Copyright (c) 2026 Lauren Tan）は [LICENSE.pstack](skills/review-team/LICENSE.pstack) に残しています。
