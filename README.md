@@ -83,6 +83,12 @@ Grok のサブスクリプションがない場合（Claude 2人と Codex 1人�
 /review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high <PR URL>
 ```
 
+Grok と Codex のサブスクリプションがない場合（Claude 3人）:
+
+```
+/review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer claude:claude-sonnet-5-5:high <PR URL>
+```
+
 既定のレビュアーの一覧は `~/.agents/skills/review-team/config/reviewers.json` にあります。このファイルは更新のたびに上書きされるので、組み合わせを変えたいときは頼むときに指定してください。
 
 ## ライセンス
