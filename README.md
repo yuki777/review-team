@@ -39,7 +39,6 @@ npx skills remove review-team -g
 | --- | --- |
 | Claude Code | `/review-team このブランチの変更をレビューして` |
 | Codex | `$review-team このブランチの変更をレビューして` |
-| OMP | `/skill:review-team このブランチの変更をレビューして` |
 
 主担当の AI が次の順で進めます。
 
@@ -78,8 +77,6 @@ npx skills remove review-team -g
 - **Grok の sandbox**：`/var/run/docker.sock` がシンボリックリンクの macOS（OrbStack など）では、Grok の sandbox が起動しません。その環境では「Grok は sandbox なしで」と頼んでください。
 - **モデル名**：結果に記録されるモデル名は CLI が報告した値です。サーバーが実際に使ったモデルの証明ではありません。
 - **古い CLI が使われる場合**：Node のバージョン管理ツールによっては、古い CLI が先に見つかります。環境変数 `REVIEW_TEAM_CLAUDE_CLI`、`REVIEW_TEAM_CODEX_CLI`、`REVIEW_TEAM_GROK_CLI` で CLI の絶対パスを指定できます。
-- **OMP**：`~/.agents/skills` が自動で読まれない設定があります。その場合は `~/.omp/agent/config.yml` の `skills.customDirectories` に `~/.agents/skills` を追加してください。
-- **Paseo**：エージェントが動くマシン側にインストールし、そのエージェントの種類（Claude Code・Codex・OMP）に合わせた頼み方を使います。
 
 ## ライセンス
 
