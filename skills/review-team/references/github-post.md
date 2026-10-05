@@ -126,10 +126,12 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 ### Consider(要検討)
 差分の外にあり、インラインにできなかったもの。インラインの Consider と同じ4項目を、Act On と同じく番号付きの見出しの下に書く。
 
-[review-team](https://github.com/yuki777/review-team)による自動レビューです。<レビュアー一覧> に同じ入力でレビューさせ、<リード> が指摘を検証しました。
+[review-team <版>](https://github.com/yuki777/review-team)による自動レビューです。<レビュアー一覧> に同じ入力でレビューさせ、<リード> が指摘を検証しました。
 ```
 
 承認するかどうかは総評に書かない。利用者が本書の3節で選んだ `event` で示す。
+
+`<版>` は manifest の `reviewTeamVersion` をそのまま書く。`null` なら版を省き、リンクの文字列を `review-team` だけにする。投稿の時点のスキルはレビューを実行した版と違うことがあるので、投稿のときに版を取り直さない。
 
 `<レビュアー一覧>` は manifest の `reviewers` から、全員を `<cli>:<requestedModel>:<requestedEffort>` の形で並べる。`status` が `ok` でないレビュアーには、`（失敗: <status>）` を後ろに付ける。これは要求した設定であり、CLI 報告モデルではない。
 
@@ -138,7 +140,7 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 例:
 
 ```markdown
-[review-team](https://github.com/yuki777/review-team)による自動レビューです。`claude:claude-fable-5-1:high`、`codex:gpt-6-astra:high`、`grok:grok-4.7:high`（失敗: timeout）に同じ入力でレビューさせ、`claude-opus-5-5` が指摘を検証しました。
+[review-team v0.1.0-6-g5f64b59](https://github.com/yuki777/review-team)による自動レビューです。`claude:claude-fable-5-1:high`、`codex:gpt-6-astra:high`、`grok:grok-4.7:high`（失敗: timeout）に同じ入力でレビューさせ、`claude-opus-5-5` が指摘を検証しました。
 ```
 
 空の見出しは書かない。インラインの指摘は総評に重複させない。

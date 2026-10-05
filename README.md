@@ -101,6 +101,12 @@ work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_r
 
 `--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）向けです。不要な環境では外してください。
 
+## リリース
+
+[tagpr](https://github.com/Songmu/tagpr) が、main へのマージのたびにリリース用の PR を作り直します。その PR をマージすると、`skills/review-team/VERSION` の版でタグと GitHub Release が作られます。版は既定で patch が上がり、PR に `tagpr:minor` か `tagpr:major` のラベルを付けると上げ幅が変わります。VERSION を手で書き換える必要はありません。tagpr が PR を作れるよう、リポジトリの Settings > Actions > General > Workflow permissions で「Allow GitHub Actions to create and approve pull requests」を有効にしておきます。
+
+レビューの記録（`manifest.json` の `reviewTeamVersion`）には、このリポジトリのチェックアウトから動かしたときは `git describe` の値、`npx skills` で入れたときは VERSION の値が入ります。
+
 ## ライセンス
 
 MIT です。pstack interrogate から取り込んだ部分の著作権表示（Copyright (c) 2026 Lauren Tan）は [LICENSE.pstack](skills/review-team/LICENSE.pstack) に残しています。

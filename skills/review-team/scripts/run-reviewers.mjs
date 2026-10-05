@@ -91,6 +91,20 @@ async function loadInput() {
     reviewedDiff: repo?.pr ? packet.diff : null };
 }
 
+const rootCommit = '6122cb42759dccbb6a17ab020842c79dbc9ca0f9';
+
+async function reviewTeamVersion() {
+  const git = (...args) => execFileAsync('git', ['-C', skillDir, ...args]).then(result => result.stdout.trim());
+  const top = await git('rev-parse', '--show-toplevel').catch(() => null);
+  // Inside another repository (e.g. vendored), git describe would report that repository's version.
+  const isOwnCheckout = top && await realpath(join(top, 'skills', 'review-team')).catch(() => null) === await realpath(skillDir)
+    && (await git('rev-list', '--max-parents=0', 'HEAD').catch(() => '')).split('\n').includes(rootCommit);
+  const described = isOwnCheckout && await git('describe', '--tags', '--always', '--dirty').catch(() => null);
+  if (described) return described;
+  const file = await readFile(join(skillDir, 'VERSION'), 'utf8').catch(() => null);
+  return file ? `v${file.trim()}` : null;
+}
+
 function stateRoot() {
   return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-team');
 }
@@ -306,11 +320,12 @@ async function main() {
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
   for (const signal of signals) process.on(signal, interrupt);
   const startedAt = new Date().toISOString();
+  const version = await reviewTeamVersion();
   try {
     const reviewers = await Promise.all(input.reviewers.map(reviewer =>
       review(reviewer, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 2, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repository,
+    const manifest = { schemaVersion: 2, reviewTeamVersion: version, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repository,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
