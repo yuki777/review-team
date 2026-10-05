@@ -16,18 +16,27 @@
 
 `threads` の i 番目（1 から数える）の本文は `thread-<i>.md`、総評は `summary.md` に置く。単一行の指摘では `startLine` と `startSide` を書かない。
 
-応答は次のように読む。
+更新要求（mutation）の応答は次のように読む。
 
 - 期待した ID がある: 成功。
-- `errors` がある: 失敗。GitHub には反映されていない。
-- それ以外（応答ファイルが無い、空、壊れている）: 結果不明。届いたかどうか分からないので、同じ要求を送り直さない。
+- それ以外（`errors` がある、応答ファイルが無い、空、壊れている）: 結果不明。`errors` があっても反映されていないとは限らないので、同じ試行で同じ要求を送り直さない。
+
+取得クエリの応答はデータとして読む。存在しない ID を取ると `node: null` と `NOT_FOUND` の `errors` が同時に返るので、これは「対象が存在しない」と読む。
+
+試行は次のどれかで終わり、終わった試行は再開しない。
+
+- 提出した。取得した `state` が `PENDING` 以外である。
+- 下書きを削除した。取得結果が `NOT_FOUND` である。
+- `create` が届かなかった。`create` が結果不明で、本書の1節のクエリで自分の pending review が0件である。
+
+やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md` を写してよい。結果不明の要求がある試行を、同じ下書きのまま続けない。
 
 ## 1. 投稿できる状態か確かめる
 
-`$OUTPUT/github/` に試行があれば、最後の試行を読む。
+`$OUTPUT/github/` に試行があれば、最後の試行が終わっているかを先に確かめる。まず下のクエリで `viewer.login` が `plan.json` の `login` と同じことを確かめ、違えば止める。pending review は作成者にしか見えないので、別のアカウントでは判定を誤る。
 
-- `create.out.json` にレビュー ID があれば、本書の4節の取得クエリでそのレビューを取る。提出済みなら本書の5節へ進む。`PENDING` なら、その試行の `plan.json` のまま本書の4節の続きから進める。取得結果が `null` なら下書きは削除済みなので、この試行は終わったものとして扱う。
-- 結果不明の要求があれば止め、本書の4節「止めるとき」に従う。
+- `create` が成功していれば、本書の4節の取得クエリでそのレビューを取る。提出済みなら本書の5節へ進む。`NOT_FOUND` なら試行は終わっている。`PENDING` で結果不明の要求が無ければ、その試行の `plan.json` のまま本書の4節の続きから進める。`PENDING` で結果不明の要求があれば、本書の4節「止めるとき」に従う。
+- `create` が結果不明なら、自分の pending review を確かめる。0件なら試行は終わっている。あれば、この試行で作られたものか断定できないので、中身を利用者に見せて止める。利用者がこの試行のものとして削除に同意したら、その ID で削除し、`NOT_FOUND` を確かめて試行を終える。
 
 `$OUTPUT/reviewed.diff` が無ければ投稿しない。これはレビュアーに渡した差分を runner が保存したもので、`--pr` の実行でしか作られない。
 
@@ -151,7 +160,7 @@ Consider をインラインにする場合は見出しを `⚠️ **Consider(要
 
 レビューを作る直前と提出する直前に、本書の1節の確認をもう一度行う。`viewer.login` が `plan.json` の `login` と違う場合も止める。
 
-下の GraphQL は `$ATTEMPT/<名前>.graphql` に書き出して使う。要求は `plan.json` から `jq` で組み立て、本文をコマンドラインに展開しない。要求と応答は `create`、`thread-<i>`、`submit`、`delete` の名前で置く。
+下の GraphQL は `$ATTEMPT/<名前>.graphql` に書き出して使う。要求は `plan.json` から `jq` で組み立て、本文をコマンドラインに展開しない。要求と応答は `create`、`thread-<i>`、`submit`、`delete` の名前で置く。本書の1節の状態確認は `state-<n>`、取得クエリは `fetch-<n>` とし、n を 1 から増やす。
 
 ```sh
 jq --rawfile query "$ATTEMPT/add-thread.graphql" --rawfile body "$ATTEMPT/thread-$i.md" \
@@ -182,10 +191,12 @@ mutation($review: ID!, $path: String!, $line: Int!, $side: DiffSide!, $startLine
     pullRequestReviewId: $review, path: $path, line: $line, side: $side,
     startLine: $startLine, startSide: $startSide, subjectType: LINE, body: $body
   }) {
-    thread { id comments(first: 1) { nodes { id } } }
+    thread { id path line startLine diffSide startDiffSide comments(first: 1) { nodes { id } } }
   }
 }
 ```
+
+追加するたびに、応答の `path`、`line`、`diffSide` が `plan.json` の `path`、`line`、`side` と一致することを確かめる。複数行なら `startLine` と `startDiffSide` も `startLine` と `startSide` と比べる。違えば次へ進まず、本書の4節「止めるとき」に従う。
 
 全件を追加したら、提出の前にレビューの中身を取得する。
 
@@ -219,9 +230,9 @@ mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
 
 止めるときは、提出せずに理由を利用者へ伝える。
 
-- 自分の下書きが残っていれば、そのことと現在の中身を伝え、削除するかを利用者に選んでもらう。残すと、同じ PR への次の投稿は本書の1節で止まる。
-- 削除に同意を得たら `deletePullRequestReview(input: { pullRequestReviewId: $review })` を送り（`delete`）、取得クエリの結果が `null` になったことを確かめる。やり直すときは本書の1節から始め、承認を経て新しい `$ATTEMPT` で投稿する。
-- 提出の結果が不明なら、取得クエリで状態を確かめる。提出済みなら本書の5節へ進む。
+- 自分の下書き（`create` で得た ID）が残っていれば、そのことと現在の中身を伝え、削除するかを利用者に選んでもらう。残すと、同じ PR への次の投稿は本書の1節で止まる。
+- 削除に同意を得たら `deletePullRequestReview(input: { pullRequestReviewId: $review })` を送り（`delete`）、取得クエリの結果が `NOT_FOUND` になったことを確かめる。`delete` が結果不明でも、この取得で判定できる。これで試行は終わる。
+- 提出の結果が不明なら、取得クエリで状態を確かめる。提出済みなら本書の5節へ進む。`PENDING` のままで、ほかに結果不明の要求が無ければ、`submit-2` の名前で提出を送り直してよい。提出済みのレビューは提出し直せないので、重複しない。
 
 完了条件: 提出の応答に `errors` が無く、`state` が `PENDING` 以外になっている。
 
