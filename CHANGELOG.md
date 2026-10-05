@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.2](https://github.com/yuki777/review-team/compare/v0.1.1...v0.1.2) - 2026-10-05
+
+- fix(review-team): 投稿手順の循環を解き、行の位置を一覧から選ばせる by @yuki777 in https://github.com/yuki777/review-team/pull/16
+
 ## [v0.1.1](https://github.com/yuki777/review-team/compare/v0.1.0...v0.1.1) - 2026-10-05
 
 - feat(review-team): リードの判定を GitHub PR レビューとして投稿する by @yuki777 in https://github.com/yuki777/review-team/pull/7
