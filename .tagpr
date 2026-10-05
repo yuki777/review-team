@@ -1,0 +1,4 @@
+[tagpr]
+	releaseBranch = main
+	versionFile = skills/review-team/VERSION
+	vPrefix = true
