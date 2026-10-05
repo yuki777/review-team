@@ -87,7 +87,8 @@ async function loadInput() {
   };
   const repository = repo && { path: repo.path, ref: repo.ref, commit: repo.commit,
     ...(repo.pr && { pr: { url: repo.pr.url, number: repo.pr.number, base: repo.pr.base } }) };
-  return { reviewers, timeoutMs, buildPrompt, repo, repository, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'] };
+  return { reviewers, timeoutMs, buildPrompt, repo, repository, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'],
+    reviewedDiff: repo?.pr ? packet.diff : null };
 }
 
 function stateRoot() {
@@ -298,6 +299,7 @@ async function main() {
   input.snapshot = snapshot?.src ?? null;
   input.prompt = input.buildPrompt(input.snapshot);
   await writeFile(join(input.output, 'prompt.md'), input.prompt, { mode: 0o600, flag: 'wx' });
+  if (input.reviewedDiff !== null) await writeFile(join(input.output, 'reviewed.diff'), input.reviewedDiff, { mode: 0o600, flag: 'wx' });
   const workRoot = await mkdtemp(join(tmpdir(), 'review-team-'));
   const controller = new AbortController();
   const interrupt = () => controller.abort();
