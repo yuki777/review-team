@@ -59,10 +59,10 @@ test('Codexの通常レビュー本文を認証エラーと取り違えない', 
   assert.equal(result.text, '401 Unauthorizedを握りつぶす不具合があります。');
 });
 
-function grokOutput({ tools = ['read_file', 'list_dir', 'grep', 'glob'], content, result, toolResults = [] } = {}) {
+function grokOutput({ tools = ['read_file', 'list_dir', 'grep', 'glob'], skills = [], mcpServers = [], content, result, toolResults = [] } = {}) {
   return [
     { type: 'system', subtype: 'init', session_id: 'grok-review', model: 'requested-model',
-      permissionMode: 'dontAsk', tools, mcp_servers: [], skills: [], slash_commands: [],
+      permissionMode: 'dontAsk', tools, mcp_servers: mcpServers, skills, slash_commands: [],
       cwd: '/private/tmp/review-team', uuid: 'init' },
     { type: 'assistant', message: { id: 'msg_0', type: 'message', role: 'assistant',
       model: 'grok-4.7', content: content ?? [{ type: 'text', text: '私は別のモデルです。減算なので不具合です。' }],
@@ -127,10 +127,38 @@ for (const name of ['run_terminal_cmd', 'search_replace', 'web_search', 'Task'])
   });
 }
 
-test('Grokが許可していないツールを広告したら拒否する', () => {
+test('Grokが許可していないツールを広告したら、そのツール名を示して拒否する', () => {
   const result = grok.parse({ stdout: grokOutput({ tools: ['read_file', 'bash'] }),
     stderr: '', exitCode: 0 });
   assert.equal(result.error.kind, 'sandbox_error');
+  assert.match(result.error.message, /tools: 1件（bash）/);
+});
+
+test('Grokのinitにskillが載っていたら、件数と名前を示して拒否する', () => {
+  const result = grok.parse({ stdout: grokOutput({ skills: ['code-review', 'bundled:imagine'] }),
+    stderr: '', exitCode: 0 });
+  assert.equal(result.error.kind, 'sandbox_error');
+  assert.match(result.error.message, /skills: 2件（code-review, bundled:imagine）/);
+  assert.equal(result.text, '');
+});
+
+test('Grokのinitの診断は、名前を5件・120文字までにし、制御文字をエスケープし、想定外の型でも例外を出さない', () => {
+  const skills = ['a\u001b[31m', 'x'.repeat(500), { name: { toString: null } }, 'd', 'e', 'f', 'g'];
+  const result = grok.parse({ stdout: grokOutput({ skills }), stderr: '', exitCode: 0 });
+  assert.equal(result.error.kind, 'sandbox_error');
+  assert.match(result.error.message, /skills: 7件（a\\u001b\[31m, x{120}…, 不明, d, e ほか2件）/);
+  assert.ok(result.error.message.length < 400);
+  const odd = grok.parse({ stdout: grokOutput().replace('"permissionMode":"dontAsk"', '"permissionMode":{"toString":null}'),
+    stderr: '', exitCode: 0 });
+  assert.equal(odd.error.kind, 'sandbox_error');
+  assert.match(odd.error.message, /permissionMode: 不明/);
+});
+
+test('Grokのinitにmcp_serversが載っていたら、件数を示して拒否する', () => {
+  const result = grok.parse({ stdout: grokOutput({ mcpServers: [{ name: 'github' }] }),
+    stderr: '', exitCode: 0 });
+  assert.equal(result.error.kind, 'sandbox_error');
+  assert.match(result.error.message, /mcp_servers: 1件/);
 });
 
 test('Grokが対応する読み取り呼び出しのないtool_resultを返したら拒否する', () => {
