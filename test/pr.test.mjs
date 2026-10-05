@@ -63,6 +63,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   const prompt = await readFile(join(dir, 'out2', 'prompt.md'), 'utf8');
   assert.match(prompt, /PRのタイトル\n\nPRの本文/);
   assert.match(prompt, /\+pr-head/);
+  assert.equal(await readFile(join(dir, 'out2', 'reviewed.diff'), 'utf8'), 'diff --git a/lib.js b/lib.js\n-base\n+pr-head\n');
   assert.equal((await readFile(ghLog, 'utf8')).split('\n').filter(line => line.startsWith('repo clone')).length, 1);
   await rm(dir, { recursive: true, force: true });
 });
