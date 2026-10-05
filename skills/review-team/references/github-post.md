@@ -11,10 +11,11 @@
 
 ```json
 { "pr": "https://github.com/o/r/pull/7", "commit": "<repository.commit>", "login": "<viewer.login>", "event": "COMMENT",
-  "threads": [{ "finding": "claude:1", "path": "src/a.js", "line": 42, "side": "RIGHT", "startLine": 40, "startSide": "RIGHT" }] }
+  "threads": [{ "finding": "claude:1", "path": "src/a.js", "line": 42, "side": "RIGHT", "text": "  return cache.get(key);",
+    "startLine": 40, "startSide": "RIGHT" }] }
 ```
 
-`threads` の i 番目（1 から数える）の本文は `thread-<i>.md`、総評は `summary.md` に置く。単一行の指摘では `startLine` と `startSide` を書かない。
+`threads` の i 番目（1 から数える）の本文は `thread-<i>.md`、総評は `summary.md` に置く。`text` は `line` の行の内容で、本書の2節の一覧から写す。単一行の指摘では `startLine` と `startSide` を書かない。
 
 更新要求（mutation）の応答は次のように読む。
 
@@ -29,17 +30,24 @@
 
 - 提出した。取得した `state` が `PENDING` 以外である。
 - 下書きを削除した。取得結果が `NOT_FOUND` である。
-- `create` が届かなかった。`create` が結果不明で、本書の1節のクエリで自分の pending review が0件である。
+- `create` が届かなかった。`create` が結果不明で、本書の1b のクエリで自分の pending review が0件である。
+- 捨てた。`create` をまだ送っていない試行は、再開せずに捨てる。
 
-やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md` を写してよい。結果不明の要求がある試行を、同じ下書きのまま続けない。
+やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md` を写してよい。結果不明の `create` や `thread-<i>` がある試行を、同じ下書きのまま続けない。`submit` が結果不明のときは、本書の4節「止めるとき」に従う。
 
 ## 1. 投稿できる状態か確かめる
 
-`$OUTPUT/github/` に試行があれば、最後の試行が終わっているかを先に確かめる。まず下のクエリで `viewer.login` が `plan.json` の `login` と同じことを確かめ、違えば止める。pending review は作成者にしか見えないので、別のアカウントでは判定を誤る。
+1a で前の試行を片付けてから、1b で PR の状態を確かめる。本書の4節から確かめ直すときは 1b だけを行う。
 
-- `create` をまだ送っていなければ、その試行の `plan.json` のまま本書の4節の初めから進める。
-- `create` が成功していれば、本書の4節の取得クエリでそのレビューを取る。提出済みなら本書の5節へ進む。`NOT_FOUND` なら試行は終わっている。`PENDING` で、結果不明の要求が無く、成功したスレッドの応答がすべて `plan.json` の位置と一致していれば、その試行の `plan.json` のまま本書の4節の続きから進める。それ以外の `PENDING` は、本書の4節「止めるとき」に従う。
+### 1a. 前の試行を片付ける
+
+`$OUTPUT/github/` に試行があれば、最後の試行が終わっているかを先に確かめる。まず本書の1b のクエリで `viewer.login` が `plan.json` の `login` と同じことを確かめ、違えば止める。pending review は作成者にしか見えないので、別のアカウントでは判定を誤る。
+
+- `create` をまだ送っていなければ、その試行を捨てる。投稿するなら、その試行のファイルを案として本書の3節のプレビューからやり直す。承認を経ずに書き込みへ進まない。
+- `create` が成功していれば、本書の4節の取得クエリでそのレビューを取る。提出済みなら本書の5節へ進む。`NOT_FOUND` なら試行は終わっている。`PENDING` で、結果不明の要求が無く、成功したスレッドの応答がすべて `plan.json` の位置と一致していれば、本書の1b を行ってから本書の4節の続きを進める。続きでは、期待した ID がある `create` と `thread-<i>` を送らず、要求ファイルの無い最初の番号から送る。送る thread が残っていなければ、本書の4節の「全件を追加したら」から進む。それ以外の `PENDING` は、本書の4節「止めるとき」に従う。
 - `create` が結果不明なら、自分の pending review を確かめる。0件なら試行は終わっている。あれば、この試行で作られたものか断定できないので、中身を利用者に見せて止める。利用者がこの試行のものとして削除に同意したら、その ID で削除し、`NOT_FOUND` を確かめて試行を終える。
+
+### 1b. PR の状態を確かめる
 
 `$OUTPUT/reviewed.diff` が無ければ投稿しない。これはレビュアーに渡した差分を runner が保存したもので、`--pr` の実行でしか作られない。
 
@@ -81,13 +89,18 @@ PR の `id`、`viewer.login`、`viewerDidAuthor` を控える。
 
 指摘は該当する行の横にあるほうが読みやすいので、Consider もインラインにする。ただしブランチ保護で会話の解決を必須にしていると、未解決のインラインスレッドはマージを止める。対象リポジトリがそうなっていれば、プレビューでそのことを利用者に伝える。件数を理由に指摘を黙って落とさない。量は本書の3節のプレビューで利用者が調整する。インラインは 100 件までにし、超えた分は総評に回す。
 
-インラインの位置は `$OUTPUT/reviewed.diff` の hunk で決める。行番号を推測で補わない。
+インラインの位置は、hunk から手で数えず、次の一覧から選ぶ。`$SKILL_DIR` は SKILL.md 2節と同じく、このスキルの位置を指す。
 
-- hunk の見出し `@@ -a,b +c,d @@` で、`b` と `d` が省略されていれば 1 とみなす。
-- 追加行と文脈行は、変更後の行番号 L（`c <= L < c+d`）と `side: RIGHT` を使う。
-- 削除行は、変更前の行番号と `side: LEFT` を使う。
-- 複数行は `startLine` と `startSide` を足す。範囲が一つの hunk に収まらなければ、最終行だけを指す。
-- hunk の外を指す指摘（呼び出し元など未変更のファイルを含む）は総評に入れる。
+```sh
+node "$SKILL_DIR/scripts/diff-lines.mjs" "$OUTPUT/reviewed.diff" --path <path>
+```
+
+一覧の各行は、コメントを置ける行の `path`、`hunk`、`side`、`line`、`text`（その行の内容）を持つ JSON である。
+
+- 指摘が引用しているコードと `text` を見比べて行を選ぶ。行番号を推測で補わない。
+- 選んだ行の `path`、`side`、`line`、`text` を、`plan.json` の thread にそのまま写す。
+- 複数行は、同じ `hunk` の中から開始行を選んで `startLine` と `startSide` を足す。同じ `hunk` に収まらなければ、最終行だけを指す。
+- 一覧に無い行（呼び出し元など未変更のファイルを含む）を指す指摘は、総評に入れる。
 
 インラインコメントの本文は次の形にする。出典 ID やモデル名は入れない。PR のタイトルと本文の言語に合わせる。
 
@@ -154,18 +167,18 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 - 投稿先の PR URL、対象コミット、投稿するアカウント（`viewer.login`）。
 - `event`。既定は `COMMENT`。`REQUEST_CHANGES` と `APPROVE` は利用者が指定したときだけ使い、分類から自動で選ばない。`viewerDidAuthor` が `true` なら `COMMENT` だけを使う。利用者がほかの event を指定していたら、レビューを作る前にその理由を伝える。event を黙って変えない。
 - 総評の全文。
-- インラインコメントごとの `path`、行（範囲なら開始行も）、`side`、本文。
+- インラインコメントごとの `path`、行（範囲なら開始行も）、`side`、その行の内容（`text`）、本文。
 - 投稿しないことにした Act On と Consider の一覧。
 
-利用者が外したり書き換えたりしたら、もう一度全体を見せる。承認されたら、新しい `$ATTEMPT` を作り、承認した内容をそのまま `plan.json`、`summary.md`、`thread-<i>.md` に書く。以後はこのファイルだけを投稿し、内容を変えるときは承認からやり直す。
+利用者が外したり書き換えたりしたら、もう一度全体を見せる。承認されたら、新しい `$ATTEMPT` を作り、承認した内容をそのまま `plan.json`、`summary.md`、`thread-<i>.md` に書く。書いたら、各 thread の `path`、`side`、`line`、`text` の組が本書の2節の一覧にあることを確かめる。無ければ位置を選び直し、承認からやり直す。以後はこのファイルだけを投稿し、内容を変えるときは承認からやり直す。
 
 完了条件: 利用者が承認した内容が、新しい `$ATTEMPT` に書かれている。
 
 ## 4. 投稿する
 
-レビューを作る直前と提出する直前に、本書の1節の確認をもう一度行う。`viewer.login` が `plan.json` の `login` と違う場合も止める。
+レビューを作る直前と提出する直前に、本書の1b の確認をもう一度行う。`viewer.login` が `plan.json` の `login` と違う場合も止める。
 
-下の GraphQL は `$ATTEMPT/<名前>.graphql` に書き出して使う。要求は `plan.json` から `jq` で組み立て、本文をコマンドラインに展開しない。要求と応答は `create`、`thread-<i>`、`submit`、`delete` の名前で置く。本書の1節の状態確認は `state-<n>`、取得クエリは `fetch-<n>` とし、n を 1 から増やす。
+下の GraphQL は `$ATTEMPT/<名前>.graphql` に書き出して使う。要求は `plan.json` から `jq` で組み立て、本文をコマンドラインに展開しない。要求と応答は `create`、`thread-<i>`、`submit`、`delete` の名前で置く。本書の1b の状態確認は `state-<n>`、取得クエリは `fetch-<n>` とし、n を 1 から増やす。
 
 ```sh
 jq --rawfile query "$ATTEMPT/add-thread.graphql" --rawfile body "$ATTEMPT/thread-$i.md" \
