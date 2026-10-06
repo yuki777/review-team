@@ -102,7 +102,7 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 - **Noted（参考）**: 妥当だが現在は対応不要。将来条件や低い影響を示せる。
 - **Dismissed（却下）**: 反証がある、目的と無関係、または具体的問題を示さない好みの提案。
 
-読みやすい Markdown で、次の順序で返す。
+日本語の読みやすい Markdown で、次の順序で返す。レビュアーの指摘が英語でも、判定は日本語で書く。
 
 1. **意図**: packet の意図とレビュー対象。
 2. **レビュアー**: ID、CLI、要求モデルと effort、CLI 報告モデルまたは不明、状態、指摘数。
@@ -126,4 +126,4 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 
 ## 由来
 
-cursor/plugins の pstack `interrogate` と四つの参照文書を日本語化し、Cursor の Task を Claude Code・Codex・Grok の CLI 呼び出しへ置き換えた。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。
+cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex・Grok の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

@@ -70,20 +70,27 @@ async function loadInput() {
   if (!Array.isArray(context) || context.some(file => typeof file?.path !== 'string' || !file.path.trim() || typeof file.content !== 'string')) {
     throw new Error('資料のcontextは{path, content}の配列が必要です。');
   }
-  const [template, rubric, quality] = await Promise.all(
+  const [templateFile, rubric, quality] = await Promise.all(
     ['reviewer-prompt.md', 'rubric.md', 'code-quality-review.md'].map(name => readFile(join(skillDir, 'references', name), 'utf8')),
   );
+  // reviewer-prompt.md is the upstream file verbatim: the text after its first "---" line is the template itself.
+  const separator = templateFile.indexOf('\n---\n');
+  if (separator < 0) throw new Error('reviewer-prompt.mdにテンプレートの区切り（---）がありません。');
+  const template = templateFile.slice(separator + '\n---\n'.length).trimStart();
   const buildPrompt = snapshot => {
     const replacements = {
       INTENT: packet.intent,
       DIFF_OR_FILES: JSON.stringify({ diff: packet.diff, context }, null, 2),
       RUBRIC_CONTENTS: rubric,
       CODE_QUALITY_CONTENTS: quality,
-      REPOSITORY_SCOPE: snapshot
-        ? `対象リポジトリのスナップショット（コミット ${repo.commit}）を \`${snapshot}\` に読み取り専用で置いています。呼び出し元・型・テスト・隣接モジュールなど、判断に必要なファイルは自由に読んで裏付けを取ってください。ファイルを読むだけのコマンド（\`rg\`、\`grep\`、\`sed -n\`、\`cat\`、\`ls\`、\`git log\` / \`git show\` など）や読み取り用ツールは使ってかまいません。未コミットの変更はスナップショットに含まれないため、上の差分を正とします。このディレクトリの外は読みません。`
-        : '判断材料はこの入力だけです。ファイルパスは出典ラベルであり、読み取り権限ではありません。対象リポジトリは提供されていないので探索しません。',
     };
-    return template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS|REPOSITORY_SCOPE)\}/g, (_, key) => replacements[key]);
+    const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/g, (_, key) => replacements[key]);
+    return snapshot ? `${prompt.trimEnd()}
+
+## Reference Repository
+
+A read-only snapshot of the repository at commit ${repo.commit} is at \`${snapshot}\`. Read whatever you need to verify a finding: callers, types, tests, sibling modules. Read-only commands (\`rg\`, \`grep\`, \`sed -n\`, \`cat\`, \`ls\`, \`git log\`, \`git show\`) and read tools are fine. Uncommitted changes are not in the snapshot, so the diff above is authoritative. Do not read outside this directory.
+` : prompt;
   };
   const repository = repo && { path: repo.path, ref: repo.ref, commit: repo.commit,
     ...(repo.pr && { pr: { url: repo.pr.url, number: repo.pr.number, base: repo.pr.base } }) };

@@ -1,77 +1,77 @@
-# レビュールーブリック
+# Review Rubric
 
-提供された意図・コード・周辺情報に対して、関連する観点を適用する。全項目を無理に指摘へ変換せず、具体的な問題と根拠を出す。参照用リポジトリが提供されていれば、判断に必要なファイルを読んで裏付けを取る。それでも確認できない情報は「未確認範囲」に明示する。
+Review through whichever lenses are relevant. Not every lens applies to every change. Use judgment.
 
-## 正しさ
+## Correctness
 
-意図した挙動を、通常経路と失敗経路の双方で実現しているか。
+Does the code actually do what the intent says it should?
 
-- 空入力、null / undefined、境界値、文字コード、型変換、整数範囲、添字。
-- 例外の伝播、握りつぶし、不正な成功判定。
-- 古い状態、競合、寿命の切れた参照、非同期の順序。
-- 冪等性: 同じ操作の再実行や途中停止後に、何が残り、どう整合するか。
-- 並行性: 同じファイルや状態を触る主体が複数いるなら、排他・所有権・順序が構造で保証されるか。
+- Edge cases: empty inputs, nil/undefined, boundary values, concurrent access
+- Error handling: are errors caught, propagated, or silently swallowed?
+- Off-by-one, type coercion, integer overflow, string encoding
+- State management: race conditions, stale closures, dangling references
+- Does the happy path work? Does the sad path work?
+- Idempotency: what happens if this operation runs twice, or if a previous run crashed halfway? If the answer is "it depends on what state was left behind," there's a missing reconciliation step.
+- Concurrency: if multiple actors can touch the same mutable state (files, branches, shared data), is access serialized structurally (locks, sequential phases, exclusive ownership), or by conventions that won't hold?
 
-「null かもしれない」だけでは不十分。呼び出し元から到達経路を示す。参照用リポジトリがあれば呼び出し元を読んで確かめる。呼び出し元を確認できないなら到達を断定しない。
+When you find a potential bug, trace the execution path. Don't just flag "this could be nil". Show the call chain that makes it nil.
 
-## 根本原因と対症療法
+## Root Causes vs. Symptoms
 
-直しているのは原因か、それとも症状を隠しているだけか。変更ファイルの外にある呼び出し元・呼び出し先・型・隣接モジュールを読み、変更が置かれた構造を理解してから判断する。参照用リポジトリがなければ packet 内の情報だけでつなげ、欠けた経路を具体的に挙げる。
+Is the code fixing the actual problem or papering over a symptom?
 
-- guard が深い不変条件違反を隠していないか。
-- retry が壊れた契約を覆っていないか。
-- cast がデータモデルの問題を消していないか。
-- モジュール A の回避策ではなく、モジュール B の境界契約を直すべき根拠があるか。
-- 「これをしないで」というコメントや運用習慣に頼らず、型・検査・所有権で防げるか。
+Answering this often requires looking beyond the changed files. Read the surrounding code (callers, callees, type definitions, sibling modules) and understand the architecture the change lives in. Use the tools available to you (Read, Grep, Glob) to explore. Follow the call chain. Read the types. Understand why the code exists before judging whether the change addresses the right layer.
 
-回避策が必要な理由と、正しい責務の置き場所を説明する。
+- Guard clauses that mask a deeper invariant violation
+- Retry logic that hides a broken contract
+- Type casts that silence a modeling error
+- If you see a workaround, ask: why is the workaround needed? What would a proper fix look like?
+- A fix in module A that should really be a fix in module B's contract
+- Instructions where structure would be better: if the fix is a comment saying "don't do X" or a convention someone has to remember, ask whether it could instead be a type constraint, a lint rule, or a runtime check that makes the wrong thing impossible
 
-## 構造の整合性
+## Structural Integrity
 
-変更は既存の構造に自然に収まるか。
+Does the code fit well into the system it's part of?
 
-- 入力検証は境界で行い、同じ検証を無秩序に繰り返していないか。
-- 高水準の調整と低水準の詳細が混線していないか。
-- 依存関係や公開 API が将来の変更を不必要に難しくしないか。
-- データ構造が実際の読み書きと整合しているか。
-- 要件を後付けで継ぎ足すより、少ない状態や経路で表現できるか。
-- 新旧 API を併存させる必要があるか。外部利用者がいない根拠があるなら、呼び出し元の移行と旧経路の除去で単純化できるか。
+- Boundary discipline: is validation at system boundaries, or scattered through business logic? Validate data once where it enters the system, then trust it internally.
+- Abstraction level: is the code mixing high-level orchestration with low-level detail?
+- Coupling: does this change introduce dependencies that will make future changes harder?
+- Data model fit: do the data structures match the actual access patterns? The right structure makes downstream code obvious. The wrong one fights you at every turn.
+- Bolted-on vs. integrated: was the change patched onto the existing design, or does it read as if the design always accounted for it? If the new requirement had been known from the start, would the code look like this?
+- Legacy dual-paths: does the change introduce a new API while keeping the old one alive? If there are no external consumers, migrate callers and delete the old path in the same wave. Don't leave compatibility layers that will become permanent.
 
-単純なコードに抽象化がないこと自体を罰しない。既存パターンとの不一致を指摘するには、比較できるコードが必要。
+Don't penalize simple code for lacking abstraction. Premature abstraction is worse than duplication.
 
-## 検証可能性
+## Verification
 
-packet の中に、正しさを判断できる証拠があるか。
+Can you tell that this code works from reading it?
 
-- テストは実装詳細ではなく挙動を確かめているか。
-- 不変条件や assertion は回帰を捉えられるか。
-- バグ修正には、元の失敗を捉えるテストがあるか。
-- 統合境界の入力から実際の成果物までが確認されるか。
-- mtime やキャッシュなどの代理指標を、対象そのものの確認と取り違えていないか。
-- 委譲・非同期の完了は成果物で判定されるか。自己申告だけを信じていないか。
+- Are there tests? Do they test behavior or implementation details?
+- Are there assertions/invariants that would catch regressions?
+- If this is a bug fix: is there a test for the bug?
+- If this touches an integration boundary: is the full path tested?
+- Check the real thing, not a proxy. If the code checks liveness via file mtime or cached state instead of reading the actual value, that's a verification gap.
+- For delegated or async work: does the code verify actual output artifacts, or does it trust self-reports and summaries?
 
-未提供のテストを「存在しない」と断定しない。入力に含まれた実行記録がある場合も、その範囲・出典を明示し、自分が実行したとは言わない。
+## Complexity Budget
 
-## 複雑さの費用
+Is the complexity justified by what the code accomplishes?
 
-複雑さは現在の要件に見合うか。
+- Code that could be simpler without losing correctness or clarity
+- Abstractions that serve only one call site
+- Configuration or parameterization for cases that don't exist yet
+- Dead code, unused imports, vestigial parameters
+- Over-engineering: "just in case" code paths with no current callers
+- Obsolete compatibility paths kept alive for transitional stability that's no longer needed. If the migration is done, delete the scaffolding
+- Does the user experience justify the complexity? Every feature, control, and option should earn its place. Half-finished features are worse than missing ones.
 
-- 挙動を失わずに簡単にできる条件分岐・状態・調整。
-- 一か所の利用しかない薄い抽象、用途のない設定項目。
-- 死んだコード、未使用 import、不要な引数。
-- 利用者のいない「念のため」の経路。
-- 移行完了後も残る互換層や足場。
-- 利用者の操作や制御項目が価値に見合うか。
+Simpler is better unless simpler is wrong. Three lines of duplication beat a premature abstraction.
 
-抽象化より短い重複の方が読みやすい場合もある。具体的な削減案と守られる挙動を示せない全面書き換え案は弱い根拠。
+## Security
 
-## セキュリティ
+For each security finding, trace the input path through the code and show it.
 
-入力から危険な処理までの経路と、破られる信頼境界を示す。
-
-- SQL、shell、eval、HTML などへ流れる未信頼データ。
-- 認証・認可の欠落と、それを悪用できる主体。
-- コード、ログ、エラーへの機密漏洩。
-- 検査と使用の間に状態が変わる TOCTOU。
-
-セキュリティ上の可能性を隠さない一方、未提供の認証層や設定を無いものとして扱わない。成立条件が不明なら、必要な情報と影響を明示する。
+- User input flowing to dangerous sinks (SQL, shell, eval, innerHTML) without sanitization
+- Authentication/authorization gaps in new endpoints
+- Secrets in code, logs, or error messages
+- TOCTOU (time-of-check-time-of-use) in security-critical paths
