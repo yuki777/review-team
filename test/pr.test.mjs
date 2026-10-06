@@ -70,6 +70,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   assert.equal(await run('out3', ['--packet', join(dir, 'packet.json')]), 0);
   assert.equal(await readFile(join(dir, 'out3', 'reviewed.diff'), 'utf8'), 'diff --git a/own.js b/own.js\n+own\n',
     'reviewed.diff records the diff the reviewers saw, not the one from gh pr diff');
+  assert.match(await readFile(join(dir, 'out3', 'prompt.md'), 'utf8'), /\+own/);
   await rm(dir, { recursive: true, force: true });
 });
 
