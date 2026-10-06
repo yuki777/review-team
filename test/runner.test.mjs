@@ -8,7 +8,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
-async function startWithHangingClis(extraArgs = []) {
+const allClis = ['--reviewer', 'claude:m', '--reviewer', 'codex:m', '--reviewer', 'grok:m'];
+
+async function startWithHangingClis(extraArgs = allClis) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   const pids = join(dir, 'pids');
   const cli = join(dir, 'hang');
@@ -57,12 +59,20 @@ test('端末終了（SIGHUP）で子CLIを残さず中断を記録する', async
 });
 
 test('制限時間を超えた子CLIを停止してtimeoutと記録する', async () => {
-  const run = await startWithHangingClis(['--timeout', '1']);
+  const run = await startWithHangingClis([...allClis, '--timeout', '1']);
   await assertCleanStop(run, 'timeout');
 });
 
-test('隔離を確認できないGrok CLIは起動しない', async () => {
+test('レビュアーを指定しなければ、ClaudeとCodexの2人でレビューする', async () => {
   const run = await startWithHangingClis(['--timeout', '1']);
+  assert.equal(await run.exited, 1);
+  const manifest = JSON.parse(await readFile(join(run.dir, 'out', 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.reviewers.map(r => r.id), ['claude', 'codex']);
+  await rm(run.dir, { recursive: true, force: true });
+});
+
+test('隔離を確認できないGrok CLIは起動しない', async () => {
+  const run = await startWithHangingClis([...allClis, '--timeout', '1']);
   await run.exited;
   const manifest = JSON.parse(await readFile(join(run.dir, 'out', 'manifest.json'), 'utf8'));
   const grok = manifest.reviewers.find(r => r.id === 'grok');
