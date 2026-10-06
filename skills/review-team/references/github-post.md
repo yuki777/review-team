@@ -10,7 +10,7 @@
 - `<名前>.json` と `<名前>.out.json`: 送った要求と、受け取った応答。要求は送る前に書く。
 
 ```json
-{ "pr": "https://github.com/o/r/pull/7", "commit": "<repository.commit>", "login": "<viewer.login>", "event": "COMMENT",
+{ "pr": "https://github.com/o/r/pull/7", "commit": "<repository.commit>", "login": "<viewer.login>",
   "threads": [{ "finding": "claude:1", "path": "src/a.js", "line": 42, "side": "RIGHT", "text": "  return cache.get(key);",
     "startLine": 40, "startSide": "RIGHT" }] }
 ```
@@ -58,7 +58,7 @@ query($url: URI!) {
   viewer { login }
   resource(url: $url) {
     ... on PullRequest {
-      id state headRefOid viewerDidAuthor
+      id state headRefOid
       reviews(states: [PENDING], first: 5) { nodes { id } }
     }
   }
@@ -72,7 +72,7 @@ query($url: URI!) {
 - `gh pr diff "$PR_URL"` の出力が `$OUTPUT/reviewed.diff` とバイト単位で一致しない。base の付け替え、packet で渡した独自の差分、runner の取得中の push のどれでも、行位置がレビューした差分と対応しなくなる。シェルのフックが出力を加工する環境では、フックを通さない生の出力で比べる。
 - 最後の試行のレビュー ID ではない pending review がある。GitHub は同じ利用者の pending review を PR ごとに一つしか持てない。手動の下書きかもしれないので、再利用・提出・削除をしない。
 
-PR の `id`、`viewer.login`、`viewerDidAuthor` を控える。
+PR の `id` と `viewer.login` を控える。
 
 完了条件: PR が open で、head と差分がレビューしたものと一致し、自分のものと確かめられない pending review が無い。
 
@@ -87,7 +87,7 @@ PR の `id`、`viewer.login`、`viewerDidAuthor` を控える。
 | Noted（参考） | 投稿しない |
 | Dismissed（却下） | 投稿しない |
 
-指摘は該当する行の横にあるほうが読みやすいので、Consider もインラインにする。ただしブランチ保護で会話の解決を必須にしていると、未解決のインラインスレッドはマージを止める。対象リポジトリがそうなっていれば、プレビューでそのことを利用者に伝える。件数を理由に指摘を黙って落とさない。量は本書の3節のプレビューで利用者が調整する。インラインは 100 件までにし、超えた分は総評に回す。
+指摘は該当する行の横にあるほうが読みやすいので、Consider もインラインにする。件数を理由に指摘を黙って落とさない。量は本書の3節のプレビューで利用者が調整する。インラインは 100 件までにし、超えた分は総評に回す。
 
 インラインの位置は、hunk から手で数えず、次の一覧から選ぶ。`$SKILL_DIR` は SKILL.md 2節と同じく、このスキルの位置を指す。
 
@@ -142,7 +142,7 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 [review-team <版>](https://github.com/yuki777/review-team)による自動レビューです。<レビュアー一覧> に同じ入力でレビューさせ、<リード> が指摘を検証しました。
 ```
 
-承認するかどうかは総評に書かない。利用者が本書の3節で選んだ `event` で示す。
+レビューは常に `COMMENT` として投稿する。PR の承認（`APPROVE`）や変更の要求（`REQUEST_CHANGES`）はしない。それは投稿を読んだ利用者が GitHub で行う。承認するかどうかは総評にも書かない。利用者が `APPROVE` や `REQUEST_CHANGES` での投稿を頼んだ場合も `COMMENT` で投稿し、そのことをプレビューで伝える。
 
 `<版>` は manifest の `reviewTeamVersion` をそのまま書く。`null` なら版を省き、リンクの文字列を `review-team` だけにする。投稿の時点のスキルはレビューを実行した版と違うことがあるので、投稿のときに版を取り直さない。
 
@@ -165,7 +165,6 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 書き込みの前に、投稿するものを全部そのまま利用者に見せる。
 
 - 投稿先の PR URL、対象コミット、投稿するアカウント（`viewer.login`）。
-- `event`。既定は `COMMENT`。`REQUEST_CHANGES` と `APPROVE` は利用者が指定したときだけ使い、分類から自動で選ばない。`viewerDidAuthor` が `true` のとき、または `--comment` で投稿するときは、`COMMENT` だけを使う。利用者がほかの event を指定していたら、レビューを作る前にその理由を伝える。event を黙って変えない。
 - 総評の全文。
 - インラインコメントごとの `path`、行（範囲なら開始行も）、`side`、その行の内容（`text`）、本文。
 - 投稿しないことにした Act On と Consider の一覧。
@@ -241,7 +240,7 @@ query($review: ID!) {
 - コメントの `id` の集合が、各 `thread-<i>.out.json` のコメント ID の集合と等しい。
 - 各コメントの `body` が、対応する `thread-<i>.md` と、末尾の改行を除いて同じである。
 
-成り立てば、`summary.md` を総評、`plan.json` の `event` を event として提出する（`submit`）。
+成り立てば、`summary.md` を総評として、`event` に `COMMENT` を渡して提出する（`submit`）。
 
 ```graphql
 mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
@@ -263,10 +262,10 @@ mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
 
 本書の4節の取得クエリで提出したレビューを取り直し、承認した内容と照合する。
 
-- `state` が event と対応している。`COMMENT` なら `COMMENTED`、`REQUEST_CHANGES` なら `CHANGES_REQUESTED`、`APPROVE` なら `APPROVED`。
+- `state` が `COMMENTED` である。
 - `body` が `summary.md` と、末尾の改行を除いて同じである。
 - コメントの件数、`id`、`path`、`line`、`body` が、`plan.json` と各 `thread-<i>` のファイルと一致している。
 
-利用者には、レビューの URL、`event`、インラインと総評の件数を伝える。各指摘の出典 ID と、その投稿先（コメントの URL または総評）の対応も伝える。投稿しなかった指摘と、その理由も伝える。
+利用者には、レビューの URL と、インラインと総評の件数を伝える。各指摘の出典 ID と、その投稿先（コメントの URL または総評）の対応も伝える。投稿しなかった指摘と、その理由も伝える。
 
 完了条件: 投稿されたレビューが GitHub 上で確認でき、承認した内容と一致し、利用者に対応が報告されている。
