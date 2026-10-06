@@ -55,7 +55,9 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
 
   const manifest = JSON.parse(await readFile(join(dir, 'out', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.repository, { path: await realpath(repo), ref: first, commit: first });
-  assert.match(await readFile(join(dir, 'out', 'prompt.md'), 'utf8'), new RegExp(`コミット ${first}`));
+  const prompt = await readFile(join(dir, 'out', 'prompt.md'), 'utf8');
+  assert.ok(prompt.startsWith('You are an adversarial code reviewer.'), 'the template header for the prompt builder is not sent');
+  assert.match(prompt, new RegExp(`## Reference Repository\\n\\nA read-only snapshot of the repository at commit ${first} is at \``));
   await rm(dir, { recursive: true, force: true });
 });
 
