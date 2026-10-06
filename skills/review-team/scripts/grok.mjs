@@ -16,11 +16,16 @@ const repositoryTools = [
 const allowedToolNames = new Set(repositoryTools.map(tool => tool.name));
 const sandboxFailure = /continuing without (?:a )?sandbox|sandbox[^\n]*(?:could not|cannot|failed|not supported|unavailable|disabled|not applied)|(?:could not|cannot|failed|unable) to (?:apply|initialize|start|enable)[^\n]*sandbox|protections missing|refusing to start with[^\n]*sandbox/i;
 
+// JSON escapes everything a TOML basic string needs except DEL.
+const tomlString = value => JSON.stringify(value).replaceAll('\u007f', '\\u007F');
+
 function sandboxError(message) {
   return Object.assign(new Error(message), { kind: 'sandbox_error' });
 }
 
-const settings = `[agent]
+// Grok writes its bundled skills into GROK_HOME on every start. The profile's discoverSkills: false
+// has been seen not to keep them out of the session, so they are also ignored by path.
+const settings = grokHome => `[agent]
 name = "review-team"
 [cli]
 auto_update = false
@@ -60,6 +65,8 @@ hooks = false
 [compat.codex]
 skills = false
 hooks = false
+[skills]
+ignore = [${tomlString(join(grokHome, 'bundled', 'skills'))}]
 `;
 
 // Grok rejects an empty curated toolset, so packet-only mode registers read_file
@@ -115,6 +122,28 @@ function isolatedEnvironment(home, grokHome, authPath) {
   });
 }
 
+// The init event is model-side output: show only a bounded, escaped sample of it.
+function label(value) {
+  const name = typeof value === 'string' ? value : typeof value?.name === 'string' ? value.name : null;
+  if (name === null) return '不明';
+  const escaped = name.replace(/[\u0000-\u001f\u007f]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return escaped.length > 120 ? `${escaped.slice(0, 120)}…` : escaped;
+}
+
+function isolationProblems(init) {
+  if (!init) return ['initイベントがありません'];
+  const listed = values => `${values.length}件（${values.slice(0, 5).map(label).join(', ')}${values.length > 5 ? ` ほか${values.length - 5}件` : ''}）`;
+  const problems = [];
+  if (init.permissionMode !== 'dontAsk') problems.push(`permissionMode: ${label(init.permissionMode)}`);
+  if (!Array.isArray(init.tools)) problems.push('tools: 不明');
+  else if (init.tools.some(tool => !allowedToolNames.has(tool))) problems.push(`tools: ${listed(init.tools.filter(tool => !allowedToolNames.has(tool)))}`);
+  for (const field of ['mcp_servers', 'skills']) {
+    if (!Array.isArray(init[field])) problems.push(`${field}: 不明`);
+    else if (init[field].length) problems.push(`${field}: ${listed(init[field])}`);
+  }
+  return problems;
+}
+
 async function inspectIsolation(cli, cwd, overrides) {
   const env = { ...process.env };
   for (const [key, value] of Object.entries(overrides)) {
@@ -163,15 +192,15 @@ export const grok = {
     const authPath = resolve(process.env.GROK_AUTH_PATH || join(nativeHome, 'auth.json'));
     await mkdir(home, { mode: 0o700 });
     await mkdir(grokHome, { mode: 0o700 });
-    await writeFile(join(grokHome, 'config.toml'), settings, { mode: 0o600, flag: 'wx' });
-    await writeFile(join(grokHome, 'requirements.toml'), settings, { mode: 0o600, flag: 'wx' });
+    await writeFile(join(grokHome, 'config.toml'), settings(grokHome), { mode: 0o600, flag: 'wx' });
+    await writeFile(join(grokHome, 'requirements.toml'), settings(grokHome), { mode: 0o600, flag: 'wx' });
     const profilePath = join(cwd, 'reviewer.profile');
     await writeFile(profilePath, reviewerProfile(repo), { mode: 0o600, flag: 'wx' });
     if (!grokAllowNoSandbox) {
       // Native OAuth refresh uses an atomic sibling-file rename and auth.json.lock.
       // Grant only that native auth directory, without importing its config/hooks.
       await writeFile(join(grokHome, 'sandbox.toml'),
-        `[profiles.review-team]\nextends = "read-only"\nrestrict_network = true\nread_only = ${JSON.stringify(repo ? [repo] : [])}\nread_write = [${JSON.stringify(dirname(authPath))}]\n`,
+        `[profiles.review-team]\nextends = "read-only"\nrestrict_network = true\nread_only = [${repo ? tomlString(repo) : ''}]\nread_write = [${tomlString(dirname(authPath))}]\n`,
         { mode: 0o600, flag: 'wx' });
     }
     const env = isolatedEnvironment(home, grokHome, authPath);
@@ -225,11 +254,9 @@ export const grok = {
       const kind = classifyError([...reportedErrors, stderr].join('\n'));
       return fail(kind, 'Grokのレビュー実行が失敗しました。');
     }
-    const init = events.find(event => event.type === 'system' && event.subtype === 'init');
-    if (!init || init.permissionMode !== 'dontAsk'
-      || !Array.isArray(init.tools) || init.tools.some(tool => !allowedToolNames.has(tool))
-      || ['mcp_servers', 'skills'].some(field => !Array.isArray(init[field]) || init[field].length)) {
-      return fail('sandbox_error', 'Grokの許可ツール制限・MCP・skill無効化を実行結果から確認できません。');
+    const problems = isolationProblems(events.find(event => event.type === 'system' && event.subtype === 'init'));
+    if (problems.length) {
+      return fail('sandbox_error', `Grokの許可ツール制限・MCP・skill無効化を実行結果から確認できません（${problems.join('、')}）。`);
     }
     const readCalls = new Set();
     for (const event of events) {
