@@ -7,7 +7,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 ## 必要なもの
 
 - Node.js 22 以降、macOS または Linux
-- 使うレビュアーの CLI（`claude`、`codex`、`grok`）と、それぞれのログイン
+- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude` と `codex`。`grok` は Grok を足すときだけ必要
 
 ## インストール
 
@@ -44,7 +44,7 @@ npx skills remove review-team -g
 
 1. 変更の意図と差分をまとめます。
 2. 対象コミットの読み取り専用クローンを作り、レビュアー全員に渡します。各レビュアーは呼び出し元やテストも読んで裏付けを取ります。
-3. レビュアーが並列で独立にレビューします（既定は Claude Fable 5.1・Codex GPT 6 Astra・Grok 4.7、effort はすべて high）。
+3. レビュアーが並列で独立にレビューします（既定は Claude Fable 5.1 と Codex GPT 6 Astra、effort はどちらも high。Grok はオプションで足せます）。
 4. 主担当が根拠を確かめ、全指摘を次の4つに分類して報告します。
 
 | 分類 | 意味 |
@@ -62,6 +62,7 @@ npx skills remove review-team -g
 | --- | --- |
 | `/review-team Claude Opus 5.5 と Claude Fable 5.1 と GPT 6 Astra でレビューして` | レビュアーの組み合わせを変える。同じ CLI の別モデルも並べられる |
 | `/review-team Claude は effort max でレビューして` | レビュアーごとの reasoning effort を変える |
+| `/review-team Grok も入れてレビューして` | 既定の2人に Grok を足して、3人でレビューする |
 | `/review-team Grok は sandbox なしでレビューして` | Grok の sandbox を使わずに起動する（OrbStack など、Grok の sandbox が起動しない環境向け） |
 | `/review-team リポジトリは読ませずに差分だけでレビューして` | クローンを渡さず、まとめた資料だけでレビューする |
 | `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
@@ -83,19 +84,15 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 
 `--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
 
-既定と同じ3人（Claude Fable 5.1・Codex GPT 6 Astra・Grok 4.7）を明示する場合:
+既定の2人に Grok を足す場合:
 
 ```
-/review-team --reviewer claude:claude-fable-5-1:high --reviewer codex:gpt-6-astra:high --reviewer grok:grok-4.7:high [PR-URL or PR-Number or Branch]
+/review-team --grok-allow-no-sandbox --reviewer claude:claude-fable-5-1:high --reviewer codex:gpt-6-astra:high --reviewer grok:grok-4.7-build-fast:high [PR-URL or PR-Number or Branch]
 ```
 
-Grok のサブスクリプションがない場合（Claude 2人と Codex 1人）:
+Grok は1回のレビューに10分以上かかることがあり、レビュー全体はいちばん遅いレビュアーを待ちます。`grok-4.7-build-fast` は料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。`--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）でだけ付けます。
 
-```
-/review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high [PR-URL or PR-Number or Branch]
-```
-
-Grok と Codex のサブスクリプションがない場合（Claude 3人）:
+Codex のサブスクリプションがない場合（Claude 3人）:
 
 ```
 /review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer claude:claude-sonnet-5-5:high [PR-URL or PR-Number or Branch]
@@ -108,16 +105,14 @@ Grok と Codex のサブスクリプションがない場合（Claude 3人）:
 PR の URL を渡せば、どのディレクトリからでもレビューできます。対象リポジトリは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/repos/` に自動でクローンされ（2回目からは更新だけ）、手元のチェックアウトには触れません。
 
 ```sh
-work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --grok-allow-no-sandbox <PR-URL>"
+work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team <PR-URL>"
 ```
 
 レビュー結果をそのまま PR に投稿するなら、`--comment` を足します。
 
 ```sh
-work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --grok-allow-no-sandbox --comment <PR-URL>"
+work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --comment <PR-URL>"
 ```
-
-`--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）向けです。不要な環境では外してください。
 
 ## リリース
 

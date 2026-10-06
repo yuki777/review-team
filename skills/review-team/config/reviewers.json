@@ -1,7 +1,6 @@
 {
   "reviewers": [
     { "cli": "claude", "model": "claude-fable-5-1", "effort": "high" },
-    { "cli": "codex", "model": "gpt-6-astra", "effort": "high" },
-    { "cli": "grok", "model": "grok-4.7", "effort": "high" }
+    { "cli": "codex", "model": "gpt-6-astra", "effort": "high" }
   ]
 }
