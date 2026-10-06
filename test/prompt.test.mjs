@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +34,7 @@ test('packetだけのレビューでは、upstreamのテンプレートに4つ�
   assert.ok(prompt.includes(await readFile(join(references, 'code-quality-review.md'), 'utf8')));
   assert.doesNotMatch(prompt, /\{(DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/);
   assert.ok(!prompt.includes('## Reference Repository'));
+  await assert.rejects(stat(join(dir, 'out', 'reviewed.diff')), { code: 'ENOENT' }, 'reviewed.diff is written only for --pr');
   await rm(dir, { recursive: true, force: true });
 });
 
