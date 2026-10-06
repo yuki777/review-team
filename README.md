@@ -67,6 +67,18 @@ npx skills remove review-team -g
 | `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
 | `/review-team 制限時間30分でレビューして` | レビュアーごとの制限時間を変える（既定20分） |
 
+### PR に投稿する
+
+PR をレビューしたあとに「PR にコメントして」と頼むと、主担当が投稿する内容をプレビューで見せ、承認を待ってから PR レビューとして投稿します。Act On と Consider はインラインコメントに、差分の外を指すものは総評に入ります。Noted と Dismissed は投稿しません。
+
+`--comment` を付けると、プレビューの承認を待たずに投稿します。
+
+```
+/review-team --comment <PR-URL>
+```
+
+投稿は自分の GitHub アカウントで公開されます。PR の head がレビュー後に進んでいた場合などは、`--comment` を付けていても投稿せずに止まります。止まったあとに投稿をやり直すときは、承認を待ちます。
+
 ### レビュアーをオプションで指定する
 
 `--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
@@ -97,6 +109,12 @@ PR の URL を渡せば、どのディレクトリからでもレビューでき
 
 ```sh
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --grok-allow-no-sandbox <PR-URL>"
+```
+
+レビュー結果をそのまま PR に投稿するなら、`--comment` を足します。
+
+```sh
+work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --grok-allow-no-sandbox --comment <PR-URL>"
 ```
 
 `--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）向けです。不要な環境では外してください。
