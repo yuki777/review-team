@@ -46,8 +46,8 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   await chmod(cli, 0o755);
 
   const state = join(dir, 'state');
-  const run = async output => {
-    const child = spawn(process.execPath, [runner, '--pr', '7', '--output', join(dir, output), '--reviewer', 'claude:m'], {
+  const run = async (output, extraArgs = []) => {
+    const child = spawn(process.execPath, [runner, '--pr', '7', '--output', join(dir, output), '--reviewer', 'claude:m', ...extraArgs], {
       stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir, XDG_STATE_HOME: state, REVIEW_TEAM_CLAUDE_CLI: cli },
     });
     return new Promise(resolve => child.on('exit', resolve));
@@ -65,6 +65,12 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   assert.match(prompt, /\+pr-head/);
   assert.equal(await readFile(join(dir, 'out2', 'reviewed.diff'), 'utf8'), 'diff --git a/lib.js b/lib.js\n-base\n+pr-head\n');
   assert.equal((await readFile(ghLog, 'utf8')).split('\n').filter(line => line.startsWith('repo clone')).length, 1);
+
+  await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '独自の意図', diff: 'diff --git a/own.js b/own.js\n+own\n' }));
+  assert.equal(await run('out3', ['--packet', join(dir, 'packet.json')]), 0);
+  assert.equal(await readFile(join(dir, 'out3', 'reviewed.diff'), 'utf8'), 'diff --git a/own.js b/own.js\n+own\n',
+    'reviewed.diff records the diff the reviewers saw, not the one from gh pr diff');
+  assert.match(await readFile(join(dir, 'out3', 'prompt.md'), 'utf8'), /\+own/);
   await rm(dir, { recursive: true, force: true });
 });
 
