@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.1.3](https://github.com/yuki777/review-team/compare/v0.1.2...v0.1.3) - 2026-10-06
+
+- feat(review-team): --comment でレビュー結果を承認を待たずに PR へ投稿する by @yuki777 in https://github.com/yuki777/review-team/pull/18
+- feat(review-team): 既定のレビュアーを Claude と Codex にし、Grok をオプションにする by @yuki777 in https://github.com/yuki777/review-team/pull/22
+- fix(review-team): Grok が隔離環境に書き出す同梱 skill を ignore し、検査失敗の理由を示す by @yuki777 in https://github.com/yuki777/review-team/pull/19
+
 ## [v0.1.2](https://github.com/yuki777/review-team/compare/v0.1.1...v0.1.2) - 2026-10-05
 
 - fix(review-team): 投稿手順の循環を解き、行の位置を一覧から選ばせる by @yuki777 in https://github.com/yuki777/review-team/pull/16
