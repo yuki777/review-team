@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.1.4](https://github.com/yuki777/review-team/compare/v0.1.3...v0.1.4) - 2026-10-06
+
+- fix(review-team): PR への投稿は常に COMMENT にし、event を選ぶ分岐をなくす by @yuki777 in https://github.com/yuki777/review-team/pull/23
+- feat(review-team): 参照文書4つを upstream の英語の原文に戻す by @yuki777 in https://github.com/yuki777/review-team/pull/25
+- feat(review-team): リード判定の統合と出力の形式を upstream の interrogate に合わせる by @yuki777 in https://github.com/yuki777/review-team/pull/26
+
 ## [v0.1.3](https://github.com/yuki777/review-team/compare/v0.1.2...v0.1.3) - 2026-10-06
 
 - feat(review-team): --comment でレビュー結果を承認を待たずに PR へ投稿する by @yuki777 in https://github.com/yuki777/review-team/pull/18
