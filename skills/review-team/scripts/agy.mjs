@@ -11,8 +11,8 @@ const agentName = 'review-team';
 const agentDefinition = `---
 name: ${agentName}
 description: Read-only reviewer
-tools:
 excludeDefaultComponents: true
+tools:
   - view_file
   - grep_search
   - list_dir
