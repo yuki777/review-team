@@ -63,7 +63,7 @@ npx skills remove review-team -g
 | `/review-team Claude Opus 5.5 と Claude Fable 5.1 と GPT 6 Astra でレビューして` | レビュアーの組み合わせを変える。同じ CLI の別モデルも並べられる |
 | `/review-team Claude は effort max でレビューして` | レビュアーごとの reasoning effort を変える |
 | `/review-team Grok も入れてレビューして` | 既定の2人に Grok を足して、3人でレビューする |
-| `/review-team Gemini も入れてレビューして` | 既定の2人に Antigravity CLI（agy）の Gemini 3.1 Pro を足して、3人でレビューする |
+| `/review-team Gemini も入れてレビューして` | 既定の2人に Antigravity CLI（agy）の Gemini 3.8 Flash を足して、3人でレビューする |
 | `/review-team リポジトリは読ませずに差分だけでレビューして` | クローンを渡さず、まとめた資料だけでレビューする |
 | `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
 | `/review-team 制限時間30分でレビューして` | レビュアーごとの制限時間を変える（既定20分） |
@@ -95,7 +95,7 @@ Grok は1回のレビューに10分以上かかることがあり、レビュー
 既定の2人に Antigravity CLI（agy）の Gemini を足す場合:
 
 ```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-3.1-pro:high [PR-URL or PR-Number or Branch]
+/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-3.8-flash:high [PR-URL or PR-Number or Branch]
 ```
 
 agy で使えるモデル ID は `agy models` で確かめられます。
