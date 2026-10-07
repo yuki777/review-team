@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.6](https://github.com/yuki777/review-team/compare/v0.1.5...v0.1.6) - 2026-10-07
+
+- fix(review-team): レビュアーの本文を reviewer-<ID>.md に書き、CLAUDE.md と名前が重ならないようにする by @yuki777 in https://github.com/yuki777/review-team/pull/30
+
 ## [v0.1.5](https://github.com/yuki777/review-team/compare/v0.1.4...v0.1.5) - 2026-10-06
 
 - docs(review-team): PR への投稿の総評から「未確認の範囲」の行を消す by @yuki777 in https://github.com/yuki777/review-team/pull/28
