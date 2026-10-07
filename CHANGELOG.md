@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.1.5](https://github.com/yuki777/review-team/compare/v0.1.4...v0.1.5) - 2026-10-06
+
+- docs(review-team): PR への投稿の総評から「未確認の範囲」の行を消す by @yuki777 in https://github.com/yuki777/review-team/pull/28
+- test(review-team): reviewed.diff の残りの契約をテストする by @yuki777 in https://github.com/yuki777/review-team/pull/27
+
 ## [v0.1.4](https://github.com/yuki777/review-team/compare/v0.1.3...v0.1.4) - 2026-10-06
 
 - fix(review-team): PR への投稿は常に COMMENT にし、event を選ぶ分岐をなくす by @yuki777 in https://github.com/yuki777/review-team/pull/23
