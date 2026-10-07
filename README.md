@@ -44,7 +44,7 @@ npx skills remove review-team -g
 
 1. 変更の意図と差分をまとめます。
 2. 対象コミットの読み取り専用クローンを作り、レビュアー全員に渡します。各レビュアーは呼び出し元やテストも読んで裏付けを取ります。
-3. レビュアーが並列で独立にレビューします（既定は Claude Fable 5.1 と Codex GPT 6 Astra、effort はどちらも high。Grok はオプションで足せます）。
+3. レビュアーが並列で独立にレビューします（既定は Claude Opus 5.5 と Codex GPT 6.1 Sol、effort はどちらも high。Grok はオプションで足せます）。
 4. 主担当が根拠を確かめ、全指摘を次の4つに分類して報告します。
 
 | 分類 | 意味 |
@@ -87,7 +87,7 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 既定の2人に Grok を足す場合:
 
 ```
-/review-team --grok-allow-no-sandbox --reviewer claude:claude-fable-5-1:high --reviewer codex:gpt-6-astra:high --reviewer grok:grok-4.7-build-fast:high [PR-URL or PR-Number or Branch]
+/review-team --grok-allow-no-sandbox --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high [PR-URL or PR-Number or Branch]
 ```
 
 Grok は1回のレビューに10分以上かかることがあり、レビュー全体はいちばん遅いレビュアーを待ちます。`grok-4.7-build-fast` は料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。`--grok-allow-no-sandbox` は、Grok の sandbox が起動しない環境（OrbStack など）でだけ付けます。
