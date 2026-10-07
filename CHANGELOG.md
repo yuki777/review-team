@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.8](https://github.com/yuki777/review-team/compare/v0.1.7...v0.1.8) - 2026-10-07
+
+- feat(review-team): Antigravity CLI（agy）をレビュアーに追加し、Grok をふだんの設定のまま起動する by @yuki777 in https://github.com/yuki777/review-team/pull/36
+
 ## [v0.1.7](https://github.com/yuki777/review-team/compare/v0.1.6...v0.1.7) - 2026-10-07
 
 - feat(review-team): 既定のレビュアーを Opus 5.5 と GPT 6.1 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/33
