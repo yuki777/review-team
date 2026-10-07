@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,23 @@ async function run(args, env = {}) {
   return { dir, code, stderr };
 }
 
+test('レビュアーの本文はreviewer-<ID>.mdに書き、Claude Codeの指示ファイルCLAUDE.mdと名前が重ならない', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
+  const cli = join(dir, 'fake-claude');
+  await writeFile(cli, `#!/bin/sh
+[ "$1" = --version ] && { echo fake 1; exit 0; }
+echo '{"type":"result","subtype":"success","is_error":false,"result":"no findings","modelUsage":{}}'
+`);
+  await chmod(cli, 0o755);
+  const { dir: out, code } = await run(['--reviewer', 'claude:m'], { REVIEW_TEAM_CLAUDE_CLI: cli });
+  assert.equal(code, 0);
+  assert.equal(await readFile(join(out, 'out', 'reviewer-claude.md'), 'utf8'), 'no findings');
+  // macOS file systems are usually case-insensitive, so claude.md would be read as CLAUDE.md.
+  assert.ok(!(await readdir(join(out, 'out'))).some(name => name.toLowerCase() === 'claude.md'));
+  await rm(dir, { recursive: true, force: true });
+  await rm(out, { recursive: true, force: true });
+});
+
 test('同じCLIを複数指定すると連番IDで別々に実行し、それぞれのモデルとeffortを渡す', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   const cli = join(dir, 'fake-claude');
@@ -32,11 +49,11 @@ echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,
   assert.equal(code, 0);
   const manifest = JSON.parse(await readFile(join(out, 'out', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.reviewers.map(r => [r.id, r.cli, r.requestedModel, r.requestedEffort, r.status, r.outputFile]), [
-    ['claude-1', 'claude', 'model-a', 'high', 'ok', 'claude-1.md'],
-    ['claude-2', 'claude', 'model-b', 'max', 'ok', 'claude-2.md'],
+    ['claude-1', 'claude', 'model-a', 'high', 'ok', 'reviewer-claude-1.md'],
+    ['claude-2', 'claude', 'model-b', 'max', 'ok', 'reviewer-claude-2.md'],
   ]);
-  assert.equal(await readFile(join(out, 'out', 'claude-1.md'), 'utf8'), 'model-a/high');
-  assert.equal(await readFile(join(out, 'out', 'claude-2.md'), 'utf8'), 'model-b/max');
+  assert.equal(await readFile(join(out, 'out', 'reviewer-claude-1.md'), 'utf8'), 'model-a/high');
+  assert.equal(await readFile(join(out, 'out', 'reviewer-claude-2.md'), 'utf8'), 'model-b/max');
   await rm(dir, { recursive: true, force: true });
   await rm(out, { recursive: true, force: true });
 });
