@@ -12,6 +12,7 @@ const agentDefinition = `---
 name: ${agentName}
 description: Read-only reviewer
 tools:
+excludeDefaultComponents: true
   - view_file
   - grep_search
   - list_dir
