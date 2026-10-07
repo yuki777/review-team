@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.7](https://github.com/yuki777/review-team/compare/v0.1.6...v0.1.7) - 2026-10-07
+
+- feat(review-team): 既定のレビュアーを Opus 5.5 と GPT 6.1 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/33
+
 ## [v0.1.6](https://github.com/yuki777/review-team/compare/v0.1.5...v0.1.6) - 2026-10-07
 
 - fix(review-team): レビュアーの本文を reviewer-<ID>.md に書き、CLAUDE.md と名前が重ならないようにする by @yuki777 in https://github.com/yuki777/review-team/pull/30
