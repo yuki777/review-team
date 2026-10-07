@@ -222,7 +222,8 @@ async function review({ id, cli, model, effort }, input, workRoot, abortSignal) 
   const result = { id, cli, requestedModel: model, requestedEffort: effort,
     actualModels: [], modelEvidence: 'unknown', status: 'error',
     cliPath: null, cliVersion: null, exitCode: null, signal: null, durationMs: 0, error: null,
-    outputFile: `${id}.md`, stdoutFile: `${id}.stdout.log`, stderrFile: `${id}.stderr.log` };
+    // Not `${id}.md`: on case-insensitive file systems claude.md would be loaded by Claude Code as CLAUDE.md.
+    outputFile: `reviewer-${id}.md`, stdoutFile: `${id}.stdout.log`, stderrFile: `${id}.stderr.log` };
   let stdout = '';
   let stderr = '';
   let text = '';
