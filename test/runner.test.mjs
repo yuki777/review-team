@@ -8,20 +8,20 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
-const allClis = ['--reviewer', 'claude:m', '--reviewer', 'codex:m', '--reviewer', 'grok:m'];
+const allClis = ['--reviewer', 'claude:m', '--reviewer', 'codex:m', '--reviewer', 'grok:m', '--reviewer', 'agy:m'];
 
 async function startWithHangingClis(extraArgs = allClis) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   const pids = join(dir, 'pids');
   const cli = join(dir, 'hang');
-  await writeFile(cli, `#!/bin/sh\n[ "$1" = --version ] && { echo fake 1; exit 0; }\n[ "$1" = inspect ] && exit 1\necho $$ >> "${pids}"\nexec sleep 60\n`);
+  await writeFile(cli, `#!/bin/sh\n[ "$1" = --version ] && { echo fake 1; exit 0; }\necho $$ >> "${pids}"\nexec sleep 60\n`);
   await chmod(cli, 0o755);
   await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '意図', diff: '差分' }));
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
     '--output', join(dir, 'out'), ...extraArgs], {
     stdio: 'ignore',
     env: { ...process.env, TMPDIR: dir, REVIEW_TEAM_CLAUDE_CLI: cli,
-      REVIEW_TEAM_CODEX_CLI: cli, REVIEW_TEAM_GROK_CLI: cli },
+      REVIEW_TEAM_CODEX_CLI: cli, REVIEW_TEAM_GROK_CLI: cli, REVIEW_TEAM_AGY_CLI: cli },
   });
   const exited = new Promise(resolve => child.on('exit', code => resolve(code)));
   return { dir, pids, child, exited };
@@ -45,7 +45,7 @@ async function assertCleanStop({ dir, pids, exited }, expectedStatus) {
   const manifest = JSON.parse(await readFile(join(dir, 'out', 'manifest.json'), 'utf8'));
   assert.equal(manifest.complete, false);
   assert.deepEqual(manifest.reviewers.map(r => [r.id, r.status]),
-    [['claude', expectedStatus], ['codex', expectedStatus], ['grok', 'sandbox_error']]);
+    [['claude', expectedStatus], ['codex', expectedStatus], ['grok', expectedStatus], ['agy', expectedStatus]]);
   assert.deepEqual((await readPids(pids, 0)).filter(alive), []);
   assert.deepEqual((await readdir(dir)).filter(name => /^review-team-/.test(name)), []);
   await rm(dir, { recursive: true, force: true });
@@ -53,7 +53,7 @@ async function assertCleanStop({ dir, pids, exited }, expectedStatus) {
 
 test('端末終了（SIGHUP）で子CLIを残さず中断を記録する', async () => {
   const run = await startWithHangingClis();
-  await readPids(run.pids, 2);
+  await readPids(run.pids, 4);
   run.child.kill('SIGHUP');
   await assertCleanStop(run, 'error');
 });
@@ -68,15 +68,5 @@ test('レビュアーを指定しなければ、ClaudeとCodexの2人でレビ�
   assert.equal(await run.exited, 1);
   const manifest = JSON.parse(await readFile(join(run.dir, 'out', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.reviewers.map(r => r.id), ['claude', 'codex']);
-  await rm(run.dir, { recursive: true, force: true });
-});
-
-test('隔離を確認できないGrok CLIは起動しない', async () => {
-  const run = await startWithHangingClis([...allClis, '--timeout', '1']);
-  await run.exited;
-  const manifest = JSON.parse(await readFile(join(run.dir, 'out', 'manifest.json'), 'utf8'));
-  const grok = manifest.reviewers.find(r => r.id === 'grok');
-  assert.equal(grok.exitCode, null);
-  assert.equal((await readPids(run.pids, 0)).length, 2);
   await rm(run.dir, { recursive: true, force: true });
 });

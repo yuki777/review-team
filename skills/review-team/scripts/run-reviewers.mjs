@@ -6,26 +6,26 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
+import { agy } from './agy.mjs';
 import { claude } from './claude.mjs';
 import { codex } from './codex.mjs';
 import { grok } from './grok.mjs';
 import { classifyError } from './errors.mjs';
 
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const adapters = { claude, codex, grok };
+const adapters = { claude, codex, grok, agy };
 const execFileAsync = promisify(execFile);
 const help = `review-team: 同一資料を複数のCLI・モデルで独立レビューします。
 
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
   --reviewer <cli>:<model>[:<effort>]
                                レビュアーを1人追加する（繰り返し指定可）。指定すると config/reviewers.json の一覧を置き換える
-                               cli は claude / codex / grok。effort の既定は high
+                               cli は claude / codex / grok / agy。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-1:max --reviewer codex:gpt-6-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
                                PR の head を読み取り専用で探索させる。資料の diff と intent を省略すると PR から補う
   --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する
   --ref <コミット>              --repoで読ませるコミット（既定 HEAD）
-  --grok-allow-no-sandbox      Grokをsandboxなしで起動する（sandboxを適用できない環境向け）
   --timeout <秒>                各CLIの制限時間（既定 1200、最大3600）
   --help                       説明のみ表示
 
@@ -38,7 +38,7 @@ async function loadInput() {
   const { values } = parseArgs({ options: {
     packet: { type: 'string' }, output: { type: 'string' },
     reviewer: { type: 'string', multiple: true },
-    timeout: { type: 'string', default: '1200' }, 'grok-allow-no-sandbox': { type: 'boolean', default: false },
+    timeout: { type: 'string', default: '1200' },
     repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, pr: { type: 'string' }, help: { type: 'boolean' },
   } });
   if (values.help) return null;
@@ -94,7 +94,7 @@ A read-only snapshot of the repository at commit ${repo.commit} is at \`${snapsh
   };
   const repository = repo && { path: repo.path, ref: repo.ref, commit: repo.commit,
     ...(repo.pr && { pr: { url: repo.pr.url, number: repo.pr.number, base: repo.pr.base } }) };
-  return { reviewers, timeoutMs, buildPrompt, repo, repository, output: resolve(values.output), grokAllowNoSandbox: values['grok-allow-no-sandbox'],
+  return { reviewers, timeoutMs, buildPrompt, repo, repository, output: resolve(values.output),
     reviewedDiff: repo?.pr ? packet.diff : null };
 }
 
@@ -155,7 +155,7 @@ async function loadReviewers(specs) {
   for (const { cli } of entries) totals[cli] = (totals[cli] ?? 0) + 1;
   const seen = {};
   return entries.map(({ cli, model, effort = 'high' }) => {
-    if (!Object.hasOwn(adapters, cli)) throw new Error(`未対応のCLIです: ${cli}（claude / codex / grok）`);
+    if (!Object.hasOwn(adapters, cli)) throw new Error(`未対応のCLIです: ${cli}（claude / codex / grok / agy）`);
     if (typeof model !== 'string' || !modelPattern.test(model)) throw new Error(`${cli}のモデルIDが不正です: ${model}`);
     if (typeof effort !== 'string' || !/^[a-z]+$/.test(effort)) throw new Error(`${cli}のreasoning effortが不正です: ${effort}`);
     seen[cli] = (seen[cli] ?? 0) + 1;
@@ -237,9 +237,8 @@ async function review({ id, cli, model, effort }, input, workRoot, abortSignal) 
     }
     const workDir = join(workRoot, id);
     await mkdir(workDir, { mode: 0o700 });
-    const invocation = await adapter.prepare({ cli: result.cliPath, model: result.requestedModel,
-      effort: result.requestedEffort, workDir,
-      grokAllowNoSandbox: input.grokAllowNoSandbox, repo: input.snapshot,
+    const invocation = await adapter.prepare({ model: result.requestedModel,
+      effort: result.requestedEffort, workDir, repo: input.snapshot,
       promptPath: join(input.output, 'prompt.md'), prompt: input.prompt });
     if (abortSignal.aborted) throw new Error('レビューを中断しました。');
     const processResult = await execute({ ...invocation, command: result.cliPath }, input.timeoutMs, abortSignal);
@@ -333,7 +332,7 @@ async function main() {
     const reviewers = await Promise.all(input.reviewers.map(reviewer =>
       review(reviewer, input, workRoot, controller.signal)));
     const complete = reviewers.every(result => result.status === 'ok');
-    const manifest = { schemaVersion: 2, reviewTeamVersion: version, grokSandbox: input.grokAllowNoSandbox ? 'off' : 'required', repository: input.repository,
+    const manifest = { schemaVersion: 3, reviewTeamVersion: version, repository: input.repository,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
       startedAt, finishedAt: new Date().toISOString(), complete, reviewers };
     await writeFile(join(input.output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
