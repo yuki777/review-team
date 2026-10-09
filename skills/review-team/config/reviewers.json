@@ -1,6 +1,7 @@
 {
   "reviewers": [
     { "cli": "claude", "model": "claude-opus-5-5", "effort": "high" },
-    { "cli": "codex", "model": "gpt-6.1-sol", "effort": "high" }
+    { "cli": "codex", "model": "gpt-6.1-sol", "effort": "high" },
+    { "cli": "grok", "model": "grok-4.7-build-fast", "effort": "high" }
   ]
 }
