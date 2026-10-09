@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.9](https://github.com/yuki777/review-team/compare/v0.1.8...v0.1.9) - 2026-10-09
+
+- feat(review-team): Grok を既定のレビュアーに戻す by @yuki777 in https://github.com/yuki777/review-team/pull/39
+
 ## [v0.1.8](https://github.com/yuki777/review-team/compare/v0.1.7...v0.1.8) - 2026-10-07
 
 - feat(review-team): Antigravity CLI（agy）をレビュアーに追加し、Grok をふだんの設定のまま起動する by @yuki777 in https://github.com/yuki777/review-team/pull/36
