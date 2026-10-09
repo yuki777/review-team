@@ -7,7 +7,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 ## 必要なもの
 
 - Node.js 22 以降、macOS または Linux
-- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude` と `codex`。`grok` は Grok を、`agy`（Antigravity CLI）は Gemini を足すときだけ必要
+- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`・`grok`。`agy`（Antigravity CLI）は Gemini を足すときだけ必要
 
 ## インストール
 
@@ -44,7 +44,8 @@ npx skills remove review-team -g
 
 1. 変更の意図と差分をまとめます。
 2. 対象コミットの読み取り専用クローンを作り、レビュアー全員に渡します。各レビュアーは呼び出し元やテストも読んで裏付けを取ります。
-3. レビュアーが並列で独立にレビューします（既定は Claude Opus 5.5 と Codex GPT 6.1 Sol、effort はどちらも high。Grok と Antigravity はオプションで足せます）。
+3. レビュアーが並列で独立にレビューします（既定は Claude Opus 5.5・Codex GPT 6.1 Sol・Grok 4.7 Build Fast、effort はすべて high。Antigravity はオプションで足せます）。
+   Grok は1回のレビューに10分以上かかることがあり、レビュー全体はいちばん遅いレビュアーを待ちます。
 4. 主担当が根拠を確かめ、全指摘を次の4つに分類して報告します。
 
 | 分類 | 意味 |
@@ -62,8 +63,8 @@ npx skills remove review-team -g
 | --- | --- |
 | `/review-team Claude Opus 5.5 と Claude Fable 5.1 と GPT 6 Astra でレビューして` | レビュアーの組み合わせを変える。同じ CLI の別モデルも並べられる |
 | `/review-team Claude は effort max でレビューして` | レビュアーごとの reasoning effort を変える |
-| `/review-team Grok も入れてレビューして` | 既定の2人に Grok を足して、3人でレビューする |
-| `/review-team Gemini も入れてレビューして` | 既定の2人に Antigravity CLI（agy）の Gemini 3.8 Flash を足して、3人でレビューする |
+| `/review-team Grok は外してレビューして` | 既定から Grok を外して、Claude と Codex の2人でレビューする |
+| `/review-team Gemini も入れてレビューして` | 既定の3人に Antigravity CLI（agy）の Gemini 3.8 Flash を足して、4人でレビューする |
 | `/review-team リポジトリは読ませずに差分だけでレビューして` | クローンを渡さず、まとめた資料だけでレビューする |
 | `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
 | `/review-team 制限時間30分でレビューして` | レビュアーごとの制限時間を変える（既定20分） |
@@ -84,25 +85,25 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 
 `--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
 
-既定の2人に Grok を足す場合:
+既定から Grok を外し、Claude と Codex の2人にする場合:
 
 ```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high [PR-URL or PR-Number or Branch]
+/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high [PR-URL or PR-Number or Branch]
 ```
 
-Grok は1回のレビューに10分以上かかることがあり、レビュー全体はいちばん遅いレビュアーを待ちます。`grok-4.7-build-fast` は料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。
+既定の Grok は `grok-4.7-build-fast` です。料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。
 
-既定の2人に Antigravity CLI（agy）の Gemini を足す場合:
+既定の3人に Antigravity CLI（agy）の Gemini を足す場合:
 
 ```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-3.8-flash:high [PR-URL or PR-Number or Branch]
+/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high --reviewer agy:gemini-3.8-flash:high [PR-URL or PR-Number or Branch]
 ```
 
 agy で使えるモデル ID は `agy models` で確かめられます。
 
 Grok と agy は、ふだんの設定とログインのまま起動します。読み取り系ツールだけを使う設定（Grok のプロファイル、agy のカスタムエージェント）は実行のたびに一時ディレクトリへ書き出すので、事前の準備は要りません。ただし、自分で入れた MCP やルールがレビュアーの文脈に入ることがあります。
 
-Codex のサブスクリプションがない場合（Claude 3人）:
+Codex と Grok のサブスクリプションがない場合（Claude 3人）:
 
 ```
 /review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer claude:claude-sonnet-5-5:high [PR-URL or PR-Number or Branch]

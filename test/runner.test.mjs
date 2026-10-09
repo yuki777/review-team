@@ -63,10 +63,10 @@ test('制限時間を超えた子CLIを停止してtimeoutと記録する', asyn
   await assertCleanStop(run, 'timeout');
 });
 
-test('レビュアーを指定しなければ、ClaudeとCodexの2人でレビューする', async () => {
+test('レビュアーを指定しなければ、ClaudeとCodexとGrokの3人でレビューする', async () => {
   const run = await startWithHangingClis(['--timeout', '1']);
   assert.equal(await run.exited, 1);
   const manifest = JSON.parse(await readFile(join(run.dir, 'out', 'manifest.json'), 'utf8'));
-  assert.deepEqual(manifest.reviewers.map(r => r.id), ['claude', 'codex']);
+  assert.deepEqual(manifest.reviewers.map(r => r.id), ['claude', 'codex', 'grok']);
   await rm(run.dir, { recursive: true, force: true });
 });
