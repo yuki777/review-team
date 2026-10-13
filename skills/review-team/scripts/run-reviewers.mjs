@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,8 @@ import { classifyError } from './errors.mjs';
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const adapters = { claude, codex, grok, agy };
 const execFileAsync = promisify(execFile);
+// stdout carries only the final summary, so a background run's log shows nothing until the end without these lines.
+const progress = message => console.error(`[review-team ${new Date().toISOString()}] ${message}`);
 const help = `review-team: 同一資料を複数のCLI・モデルで独立レビューします。
 
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
@@ -117,6 +119,7 @@ function stateRoot() {
 }
 
 async function resolvePullRequest(spec) {
+  progress(`PRを取得しています: ${spec}`);
   const view = await execFileAsync('gh', ['pr', 'view', spec, '--json', 'number,url,title,body,baseRefName'])
     .catch(error => { throw new Error(`PRを取得できません: ${spec}（${error.stderr?.trim() || error.message}）`); });
   const pr = JSON.parse(view.stdout);
@@ -124,15 +127,28 @@ async function resolvePullRequest(spec) {
   if (!host) throw new Error(`PRのURLを解釈できません: ${pr.url}`);
   const cache = join(stateRoot(), 'repos', host, owner, name);
   if (!await stat(join(cache, '.git')).catch(() => null)) {
+    progress(`リポジトリをキャッシュへクローンしています（初回は数分かかることがあります）: ${host}/${owner}/${name}`);
     await mkdir(dirname(cache), { recursive: true, mode: 0o700 });
-    await execFileAsync('gh', ['repo', 'clone', `https://${host}/${owner}/${name}`, cache, '--', '--quiet', '--no-checkout'])
-      .catch(error => { throw new Error(`リポジトリをクローンできません: ${host}/${owner}/${name}（${error.stderr?.trim() || error.message}）`); });
+    // Clone beside the cache and rename it into place, so a concurrent run never sees a half-cloned cache with .git.
+    const staging = await mkdtemp(join(dirname(cache), `.${name}-clone-`));
+    try {
+      await execFileAsync('gh', ['repo', 'clone', `https://${host}/${owner}/${name}`, join(staging, 'repo'), '--', '--quiet', '--no-checkout'])
+        .catch(error => { throw new Error(`リポジトリをクローンできません: ${host}/${owner}/${name}（${error.stderr?.trim() || error.message}）`); });
+      // Another run may have finished its clone first; its cache is complete, so keep it and drop ours.
+      await rename(join(staging, 'repo'), cache).catch(error => {
+        if (!['EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error;
+      });
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
   }
   const git = (...args) => execFileAsync('git', ['-C', cache, ...args]).then(result => result.stdout.trim());
   const headRef = `refs/review-team/pull/${pr.number}`;
+  progress(`PRのコミットを取得しています: ${pr.url}`);
   await git('fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${pr.number}/head:${headRef}`)
     .catch(error => { throw new Error(`PRのコミットを取得できません（${error.stderr?.trim() || error.message}）`); });
   const commit = await git('rev-parse', '--verify', `${headRef}^{commit}`);
+  progress('PRの差分を取得しています');
   // gh pr diff compares against the base at PR time, so merged PRs still yield their own changes.
   const diff = (await execFileAsync('gh', ['pr', 'diff', pr.url], { maxBuffer: 64 * 1024 * 1024 })
     .catch(error => { throw new Error(`PRの差分を取得できません（${error.stderr?.trim() || error.message}）`); })).stdout;
@@ -311,7 +327,10 @@ async function main() {
     if (!input) { console.log(help); return; }
     await mkdir(dirname(input.output), { recursive: true, mode: 0o700 });
     await mkdir(input.output, { mode: 0o700 });
-    if (input.repo) snapshot = await createSnapshot(input.repo);
+    if (input.repo) {
+      progress('レビュアーに読ませるクローンを作っています');
+      snapshot = await createSnapshot(input.repo);
+    }
   } catch (error) {
     console.error(error.code === 'EEXIST' ? `出力先が既に存在します: ${input.output}` : error.message);
     process.exitCode = 2;
@@ -329,8 +348,12 @@ async function main() {
   const startedAt = new Date().toISOString();
   const version = await reviewTeamVersion();
   try {
+    progress(`レビュアーを起動しました: ${input.reviewers.map(({ id }) => id).join(', ')}（出力先 ${input.output}）`);
     const reviewers = await Promise.all(input.reviewers.map(reviewer =>
-      review(reviewer, input, workRoot, controller.signal)));
+      review(reviewer, input, workRoot, controller.signal).then(result => {
+        progress(`${result.id} が終わりました: ${result.status}`);
+        return result;
+      })));
     const complete = reviewers.every(result => result.status === 'ok');
     const manifest = { schemaVersion: 3, reviewTeamVersion: version, repository: input.repository,
       promptSha256: createHash('sha256').update(input.prompt).digest('hex'),
