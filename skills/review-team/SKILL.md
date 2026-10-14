@@ -145,6 +145,31 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 
 完了条件: 投稿したレビューを GitHub 上で取り直して承認した内容と照合し、レビューの URL と各指摘の投稿先を利用者に報告している。
 
+### 新しい push を自動で再レビューする（`--watch`）
+
+利用者が起動時に `--watch` を付けた場合は、`--comment` と同じく投稿の依頼として扱い、投稿に成功したあとでその PR をウォッチに登録する。`--watch` は、登録した PR への上限回数までの自動再投稿への同意でもある。`--watch` と `--rereview` はリードが解釈するもので、runner には渡さない。`--comment` が無くても `--watch` があれば投稿するが、最初の投稿のプレビューは通常どおり承認を待つ。
+
+`--watch` か `--rereview` があり、github-post.md の5節まで終えて投稿を確かめられたら、次を実行する。投稿しなかった、または止まった場合は実行しない。
+
+```sh
+node "$SKILL_DIR/scripts/watch-pr.mjs" record --output "$OUTPUT" --effort <ホストが示す自分の effort>
+```
+
+ホストが effort を示していなければ `--effort` を省く（既定 `xhigh`）。`record` は PR が未登録なら登録し、登録済みならレビューした commit と差分を記録する。出力の `registered` が `true` なら、利用者に、ウォッチの期限（`expiresAt`）、再レビューの上限（`maxRereviews`）、`watch-pr.mjs list` と `watch-pr.mjs remove <PR-URL>` で確認と解除ができることを伝える。`schedule.installed` が `true` なら、10分ごとの定期実行を登録したことと、`schedule.plist` のパス、`watch-pr.mjs uninstall` で外せることも伝える。`schedule.cron` があれば（macOS 以外）、その行を crontab に足すよう伝える。
+
+定期実行（tick）は LLM を使わずに PR を見回り、新しい push があった PR についてだけ、次の形でこのスキルを起動する。
+
+```sh
+claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment --rereview <n>/<上限> <PR-URL>"
+```
+
+`--rereview <n>/<上限>` で起動された場合:
+
+- `--comment` と同じく、プレビューへの同意を得たものとして投稿する。止める条件（github-post.md の1b・4節）はそのまま守る。
+- 利用者がその場にいないので、利用者に選んでもらう場面（下書きの削除、承認からのやり直しなど）では書き込みをせずに止め、理由を出力して終える。
+- 総評の対象コミットの下に `- 自動再レビュー: <n>/<上限> 回目` を足す。n が上限と同じなら、続けて「以後の push は自動ではレビューしません」と書く。
+- 投稿を確かめられたら、上の `record` を `--effort` なしで実行する。`record` を実行しなかった回は、tick が失敗として数え、2回続くとウォッチを止める。
+
 ## 由来
 
 cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex・Grok・Antigravity の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

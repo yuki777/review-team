@@ -81,6 +81,31 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 
 投稿は自分の GitHub アカウントで公開されます。PR の head がレビュー後に進んでいた場合などは、`--comment` を付けていても投稿せずに止まります。止まったあとに投稿をやり直すときは、承認を待ちます。
 
+### push のたびに自動で再レビューする
+
+`--watch` を付けると、投稿したあとも PR を見回り、新しい push があれば自動で再レビューして投稿します。
+
+```
+/review-team --comment --watch <PR-URL>
+```
+
+- 最初の `--watch` で、10分ごとの見回りを launchd に登録します（`~/Library/LaunchAgents` に plist を1つ作ります）。Linux では crontab に足す行を表示します。
+- 見回りは LLM を使わず、GitHub の状態と記録を比べるだけです。新しい push があった PR についてだけ、`claude -p` で review-team を起動します。
+- 新しい push を見つけたら、次の見回りでもそのままか（push が続いていないか）を確かめてからレビューします。push からレビューが始まるまで、10〜20分ほどかかります。
+- 差分が変わらない push（main の取り込みやリベースだけ）は見送ります。
+- 再レビューは1つの PR につき3回までです。PR のマージかクローズ、登録から12時間、失敗の2回連続のどれかで止まります。
+- 再レビューが90分で終わらなければ打ち切り、失敗として数えます。
+
+確認と解除:
+
+```sh
+node ~/.agents/skills/review-team/scripts/watch-pr.mjs list
+node ~/.agents/skills/review-team/scripts/watch-pr.mjs remove <PR-URL>
+node ~/.agents/skills/review-team/scripts/watch-pr.mjs uninstall   # 見回りそのものを外す
+```
+
+再レビューは利用者の GitHub アカウントで、プレビューの承認を待たずに投稿されます。再レビューのたびに、全レビュアー分の利用量がかかります。手で起動したレビューと自動の再レビューが同じ PR に同時に投稿しようとすると、後から投稿するほうが止まります。
+
 ### レビュアーをオプションで指定する
 
 `--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
