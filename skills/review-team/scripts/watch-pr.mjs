@@ -9,7 +9,8 @@ import { parseArgs, promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const script = fileURLToPath(import.meta.url);
-const settleMs = 10 * 60 * 1000;
+// A new head is reviewed once a later tick still sees it after this quiet time, so pushes in a row are reviewed once.
+const quietMs = () => Number(process.env.REVIEW_TEAM_QUIET ?? 300) * 1000;
 const intervalSeconds = 600;
 const leadTimeoutMs = () => Number(process.env.REVIEW_TEAM_LEAD_TIMEOUT || 5400) * 1000;
 const maxFailures = 2;
@@ -26,7 +27,7 @@ node watch-pr.mjs install    launchd に10分ごとの tick を登録する（ma
 node watch-pr.mjs uninstall  launchd の登録を外す
 
 止める条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した、失敗が${maxFailures}回続いた
-見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、最後のコミットから10分未満、同じPRの再レビューが実行中
+見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから次の tick まで（push が続いていないかを見る）、同じPRの再レビューが実行中
 `;
 
 function stateRoot() {
@@ -55,6 +56,12 @@ async function writeState(file, state) {
   const tmp = `${file}.${process.pid}.tmp`;
   await writeFile(tmp, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
   await rename(tmp, file);
+}
+
+// Merges into the state as it is now. A watch removed while tick was asking GitHub stays removed.
+async function updateState(file, patch) {
+  const current = await readState(file).catch(() => null);
+  if (current) await writeState(file, { ...current, ...patch });
 }
 
 async function listStateFiles(dir = join(watchDir(), 'prs')) {
@@ -137,12 +144,11 @@ async function gh(args) {
 }
 
 async function fetchPr(url) {
-  const query = 'query($url: URI!) { resource(url: $url) { ... on PullRequest { state isDraft headRefOid commits(last: 1) { nodes { commit { committedDate } } } } } }';
+  const query = 'query($url: URI!) { resource(url: $url) { ... on PullRequest { state isDraft headRefOid } } }';
   const out = JSON.parse(await gh(['api', 'graphql', '--hostname', parsePrUrl(url).host, '-f', `query=${query}`, '-f', `url=${url}`]));
   const pr = out.data?.resource;
   if (!pr?.state) throw new Error(`PRを取得できません: ${url}`);
-  return { state: pr.state, isDraft: pr.isDraft, head: pr.headRefOid,
-    committedAt: Date.parse(pr.commits.nodes[0]?.commit.committedDate ?? 0) };
+  return { state: pr.state, isDraft: pr.isDraft, head: pr.headRefOid };
 }
 
 // Returns what tick should do with one watched PR. Only the gh queries and the state file decide it.
@@ -157,7 +163,9 @@ async function decide(state, file, now = Date.now()) {
   if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
   if (state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
   if (pr.isDraft) return { action: 'skip', reason: 'draft' };
-  if (now - pr.committedAt < settleMs) return { action: 'skip', reason: 'settling' };
+  // Commit dates can be old or skewed after a rebase or cherry-pick, so the quiet time counts from when tick first saw the head.
+  if (state.pendingHead !== pr.head) return { action: 'observe', reason: 'settling', head: pr.head };
+  if (now - Date.parse(state.pendingSince) < quietMs()) return { action: 'skip', reason: 'settling' };
   if (sha256(await gh(['pr', 'diff', state.pr])) === state.lastReviewedDiffSha256) {
     return { action: 'same-diff', head: pr.head };
   }
@@ -180,9 +188,11 @@ async function tick() {
       }
       if (decision.action !== 'stopped') console.log(`${state.pr}: ${decision.action}${decision.reason ? ` (${decision.reason})` : ''}`);
       if (decision.action === 'stop') {
-        await writeState(file, { ...state, stoppedReason: decision.reason, stoppedAt: new Date().toISOString() });
+        await updateState(file, { stoppedReason: decision.reason, stoppedAt: new Date().toISOString() });
+      } else if (decision.action === 'observe') {
+        await updateState(file, { pendingHead: decision.head, pendingSince: new Date().toISOString() });
       } else if (decision.action === 'same-diff') {
-        await writeState(file, { ...state, lastReviewedCommit: decision.head });
+        await updateState(file, { lastReviewedCommit: decision.head });
       } else if (decision.action === 'review') {
         const child = spawn(process.execPath, [script, 'run', file], { detached: true, stdio: 'ignore' });
         child.unref();
@@ -213,9 +223,21 @@ async function run(file) {
       const child = spawn(lead, ['-p', '--effort', state.effort, '--permission-mode', 'auto', prompt],
         { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd], detached: true });
       const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
-      const timer = setTimeout(() => { kill('SIGTERM'); setTimeout(() => kill('SIGKILL'), 30000).unref(); }, leadTimeoutMs());
+      let timedOut = false;
+      let force;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        kill('SIGTERM');
+        force = setTimeout(() => kill('SIGKILL'), 30000);
+      }, leadTimeoutMs());
       child.on('error', () => { clearTimeout(timer); done(-1); });
-      child.on('exit', (exitCode, signal) => { clearTimeout(timer); done(exitCode ?? signal); });
+      child.on('exit', (exitCode, signal) => {
+        clearTimeout(timer);
+        clearTimeout(force);
+        // Reviewers that ignored SIGTERM may outlive the lead; kill the group before the lock is released.
+        if (timedOut) kill('SIGKILL');
+        done(exitCode ?? signal);
+      });
     });
     await log.close();
     // remove may have deleted the watch while the lead ran; leave it deleted.
@@ -295,7 +317,8 @@ async function install() {
 // Linux has no per-user scheduler to write safely, so the crontab line is returned for the lead to report.
 async function ensureInstalled() {
   if (process.platform !== 'darwin') return install();
-  if (await readFile(plistPath()).then(() => true, () => false)) return { installed: false, plist: plistPath() };
+  // A plist written with another PATH or state directory would tick the wrong place, so it is rewritten when it differs.
+  if (await readFile(plistPath(), 'utf8').catch(() => null) === plist()) return { installed: false, plist: plistPath() };
   return install();
 }
 

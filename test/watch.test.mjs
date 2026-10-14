@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const watcher = new URL('../skills/review-team/scripts/watch-pr.mjs', import.meta.url).pathname;
 const prUrl = 'https://example.test/acme/widget/pull/7';
-const minutesAgo = minutes => new Date(Date.now() - minutes * 60 * 1000).toISOString();
 
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-watch-'));
@@ -44,11 +43,11 @@ cp "${diff}" "$out/reviewed.diff"
   await chmod(join(bin, 'gh'), 0o755);
   await chmod(lead, 0o755);
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'),
-    REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1' };
+    REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1', REVIEW_TEAM_QUIET: '0' };
   delete env.REVIEW_TEAM_DEPTH;
   const setPr = (fields) => writeFile(pr, JSON.stringify({ data: { resource: {
-    state: 'OPEN', isDraft: false, headRefOid: 'aaa', committedDate: minutesAgo(30), ...fields,
-  } } }).replace(/"committedDate":("[^"]*")/, '"commits":{"nodes":[{"commit":{"committedDate":$1}}]}'));
+    state: 'OPEN', isDraft: false, headRefOid: 'aaa', ...fields,
+  } } }));
   const cli = (...args) => execFileAsync(process.execPath, [watcher, ...args], { env });
   const stateFile = join(dir, 'state', 'review-team', 'watch', 'prs', 'example.test', 'acme', 'widget', '7.json');
   const state = async () => JSON.parse(await readFile(stateFile, 'utf8'));
@@ -77,7 +76,12 @@ cp "${diff}" "$out/reviewed.diff"
     await writeFile(join(out, 'reviewed.diff'), await readFile(diff));
     return JSON.parse((await cli('record', '--output', out, ...extra)).stdout);
   };
-  return { dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
+  // A new head is only observed on the first tick; the next tick acts on it.
+  const tickAfterQuiet = async () => {
+    assert.match(await tick(), /: observe \(settling\)$/m);
+    return tick();
+  };
+  return { tickAfterQuiet, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
 }
 
 test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
@@ -95,27 +99,29 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   assert.equal(await readFile(t.leadLog, 'utf8').catch(() => ''), '');
 });
 
-test('新しいpushは10分経ってから再レビューし、差分が同じpushは見送る', async () => {
+test('新しいheadは次のtickでも変わっていなければ再レビューし、差分が同じpushは見送る', async () => {
   const t = await setup();
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'aaa' });
   await t.register('aaa');
 
-  await t.setPr({ headRefOid: 'bbb', committedDate: minutesAgo(3) });
-  assert.match(await t.tick(), /skip \(settling\)/);
   await t.setPr({ headRefOid: 'bbb', isDraft: true });
   assert.match(await t.tick(), /skip \(draft\)/);
 
   await t.setPr({ headRefOid: 'bbb' });
-  assert.match(await t.tick(), /same-diff/);
+  assert.match(await t.tickAfterQuiet(), /same-diff/);
   assert.equal((await t.state()).lastReviewedCommit, 'bbb');
   assert.equal((await t.state()).rereviews, 0);
 
   await writeFile(t.diff, 'diff-2\n');
   await t.setPr({ headRefOid: 'ccc' });
-  assert.match(await t.tick(), /review/);
+  assert.match(await t.tick(), /observe/);
+  // Another push before the next tick restarts the quiet time.
+  await t.setPr({ headRefOid: 'ddd' });
+  assert.match(await t.tick(), /observe/);
+  assert.match(await t.tick(), /: review$/m);
   const s = await t.state();
-  assert.equal(s.lastReviewedCommit, 'ccc');
+  assert.equal(s.lastReviewedCommit, 'ddd');
   assert.equal(s.rereviews, 1);
   assert.equal(s.failures, 0);
   assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/3 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
@@ -129,6 +135,7 @@ test('再レビューは上限で止まり、マージでも止まる', async ()
   for (const head of ['b1', 'b2', 'b3']) {
     await writeFile(t.diff, `diff-${head}\n`);
     await t.setPr({ headRefOid: head });
+    await t.tick();
     await t.tick();
   }
   const s = await t.state();
@@ -154,7 +161,7 @@ test('投稿を記録しなかった再レビューは失敗として数え、2�
   await writeFile(join(t.dir, 'lead-fails'), '');
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'bbb' });
-  await t.tick();
+  await t.tickAfterQuiet();
   assert.equal((await t.state()).failures, 1);
   await t.tick();
   assert.equal((await t.state()).failures, 2);
@@ -178,7 +185,7 @@ test('止まらない再レビューは制限時間で止めて失敗に数え�
   await writeFile(join(t.dir, 'lead-hangs'), '');
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'bbb' });
-  await t.tick();
+  await t.tickAfterQuiet();
   const s = await t.state();
   assert.equal(s.failures, 1);
   assert.equal(s.lastExitCode, 'SIGTERM');
@@ -199,6 +206,7 @@ test('再レビュー中に解除したウォッチは、その再レビュー�
   await writeFile(join(t.dir, 'lead-removes'), '');
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'bbb' });
+  await t.tick();
   const { stdout } = await t.cli('tick');
   assert.match(stdout, /: review$/m);
   for (let i = 0; i < 100 && await stat(t.stateFile).catch(() => null); i++) await new Promise(done => setTimeout(done, 50));
