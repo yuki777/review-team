@@ -145,7 +145,10 @@ async function resolvePullRequest(spec) {
   const git = (...args) => execFileAsync('git', ['-C', cache, ...args]).then(result => result.stdout.trim());
   const headRef = `refs/review-team/pull/${pr.number}`;
   progress(`PRのコミットを取得しています: ${pr.url}`);
-  await git('fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${pr.number}/head:${headRef}`)
+  const fetchHead = () => git('fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${pr.number}/head:${headRef}`);
+  // Runs for other PRs of the same repository fetch into this cache too and can collide on its locks, so retry once.
+  await fetchHead()
+    .catch(() => new Promise(done => setTimeout(done, 3000)).then(fetchHead))
     .catch(error => { throw new Error(`PRのコミットを取得できません（${error.stderr?.trim() || error.message}）`); });
   const commit = await git('rev-parse', '--verify', `${headRef}^{commit}`);
   progress('PRの差分を取得しています');
