@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.1.10](https://github.com/yuki777/review-team/compare/v0.1.9...v0.1.10) - 2026-10-14
+
+- runner: 進捗を stderr に書き、PR キャッシュのクローンを並行実行に耐えるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/41
+- feat(review-team): --watch で投稿した PR を見回り、新しい push を自動で再レビューする by @yuki777 in https://github.com/yuki777/review-team/pull/44
+
 ## [v0.1.9](https://github.com/yuki777/review-team/compare/v0.1.8...v0.1.9) - 2026-10-09
 
 - feat(review-team): Grok を既定のレビュアーに戻す by @yuki777 in https://github.com/yuki777/review-team/pull/39
