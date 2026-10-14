@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.11](https://github.com/yuki777/review-team/compare/v0.1.10...v0.1.11) - 2026-10-14
+
+- docs(review-team): PR への投稿の総評に「確認した点」と、あれば「一次資料」を書く by @yuki777 in https://github.com/yuki777/review-team/pull/46
+
 ## [v0.1.10](https://github.com/yuki777/review-team/compare/v0.1.9...v0.1.10) - 2026-10-14
 
 - runner: 進捗を stderr に書き、PR キャッシュのクローンを並行実行に耐えるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/41
