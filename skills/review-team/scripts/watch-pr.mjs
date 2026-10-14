@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const script = fileURLToPath(import.meta.url);
 const settleMs = 10 * 60 * 1000;
 const intervalSeconds = 600;
+const leadTimeoutMs = () => Number(process.env.REVIEW_TEAM_LEAD_TIMEOUT || 5400) * 1000;
 const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
 const help = `review-team watch: 投稿したPRに新しいpushがあれば、定期的に再レビューして投稿します。
@@ -112,6 +113,11 @@ async function record(values) {
   const found = await readState(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
   // A stopped watch is registered afresh, so --watch on a PR whose watch expired starts a new one.
   const previous = found?.stoppedReason ? null : found;
+  // While a re-review runs, a missing or stopped watch was removed or stopped meanwhile; its post must not bring it back.
+  if (!previous && await locked(`${file}.lock`)) {
+    console.log(JSON.stringify({ registered: false, state: file, reason: 'ウォッチは再レビュー中に解除または停止されたので、登録し直しません。' }, null, 2));
+    return;
+  }
   const state = previous ?? {
     pr: url, effort: values.effort ?? 'xhigh',
     maxRereviews, registeredAt: now.toISOString(),
@@ -142,10 +148,11 @@ async function fetchPr(url) {
 async function decide(state, file, now = Date.now()) {
   if (state.stoppedReason) return { action: 'stopped' };
   if (await locked(`${file}.lock`)) return { action: 'skip', reason: 'running' };
-  const pr = await fetchPr(state.pr);
-  if (pr.state !== 'OPEN') return { action: 'stop', reason: pr.state.toLowerCase() };
+  // Conditions that need only the state come first, so an expired watch stops even while GitHub is unreachable.
   if (now >= Date.parse(state.expiresAt)) return { action: 'stop', reason: 'expired' };
   if (state.failures >= maxFailures) return { action: 'stop', reason: 'failed' };
+  const pr = await fetchPr(state.pr);
+  if (pr.state !== 'OPEN') return { action: 'stop', reason: pr.state.toLowerCase() };
   if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
   if (state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
   if (pr.isDraft) return { action: 'skip', reason: 'draft' };
@@ -200,15 +207,22 @@ async function run(file) {
     const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
     const code = await new Promise(done => {
+      // The lead runs in its own process group so a hung run can be stopped with its reviewers,
+      // which releases the lock and counts the attempt as a failure.
       const child = spawn(lead, ['-p', '--effort', state.effort, '--permission-mode', 'auto', prompt],
-        { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd] });
-      child.on('error', () => done(-1));
-      child.on('exit', done);
+        { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd], detached: true });
+      const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
+      const timer = setTimeout(() => { kill('SIGTERM'); setTimeout(() => kill('SIGKILL'), 30000).unref(); }, leadTimeoutMs());
+      child.on('error', () => { clearTimeout(timer); done(-1); });
+      child.on('exit', (exitCode, signal) => { clearTimeout(timer); done(exitCode ?? signal); });
     });
     await log.close();
-    const after = await readState(file);
-    const posted = after.lastPostedAt && after.lastPostedAt >= startedAt;
-    await writeState(file, { ...after, lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
+    // remove may have deleted the watch while the lead ran; leave it deleted.
+    const after = await readState(file).catch(() => null);
+    if (after) {
+      const posted = after.lastPostedAt && after.lastPostedAt >= startedAt;
+      await writeState(file, { ...after, lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
+    }
   } finally {
     await rm(`${file}.lock`, { force: true });
   }
@@ -231,9 +245,12 @@ async function remove(url) {
 const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
 const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// launchd starts jobs with a minimal PATH, so the current PATH and CLI overrides are copied in.
+// launchd and cron start jobs with a minimal environment, so the current PATH, state directory and CLI overrides are copied in.
+const scheduleEnv = () => Object.entries(process.env)
+  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && key !== 'REVIEW_TEAM_DEPTH'));
+
 function plist() {
-  const env = Object.entries(process.env).filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || key.startsWith('REVIEW_TEAM_'));
+  const env = scheduleEnv();
   const logs = join(watchDir(), 'logs');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -254,7 +271,11 @@ ${env.map(([key, value]) => `    <key>${escapeXml(key)}</key><string>${escapeXml
 `;
 }
 
-const cronLine = () => `*/10 * * * * PATH='${process.env.PATH}' '${process.execPath}' '${script}' tick >> '${join(watchDir(), 'logs', 'tick.log')}' 2>&1`;
+const shellQuote = text => `'${text.replace(/'/g, `'\\''`)}'`;
+const cronLine = () => {
+  const env = scheduleEnv().map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
+  return `*/10 * * * * ${env} ${shellQuote(process.execPath)} ${shellQuote(script)} tick >> ${shellQuote(join(watchDir(), 'logs', 'tick.log'))} 2>&1`;
+};
 
 async function install() {
   await mkdir(join(watchDir(), 'logs'), { recursive: true, mode: 0o700 });
