@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.12](https://github.com/yuki777/review-team/compare/v0.1.11...v0.1.12) - 2026-10-14
+
+- docs(review-team): リードはキャッシュのコミットからコードを読む by @yuki777 in https://github.com/yuki777/review-team/pull/49
+
 ## [v0.1.11](https://github.com/yuki777/review-team/compare/v0.1.10...v0.1.11) - 2026-10-14
 
 - docs(review-team): PR への投稿の総評に「確認した点」と、あれば「一次資料」を書く by @yuki777 in https://github.com/yuki777/review-team/pull/46
