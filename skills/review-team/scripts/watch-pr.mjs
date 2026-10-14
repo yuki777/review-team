@@ -132,7 +132,8 @@ async function record(values) {
 }
 
 async function gh(args) {
-  return (await execFileAsync('gh', args, { maxBuffer: 64 * 1024 * 1024 })).stdout;
+  // A stalled gh would keep tick.lock held and stop every later tick, so each call gets a time limit.
+  return (await execFileAsync('gh', args, { maxBuffer: 64 * 1024 * 1024, timeout: 120000 })).stdout;
 }
 
 async function fetchPr(url) {
@@ -284,7 +285,9 @@ async function install() {
   await mkdir(dirname(plistPath()), { recursive: true });
   await execFileAsync('launchctl', ['bootout', `${domain}/${label}`]).catch(() => {});
   await writeFile(plistPath(), plist());
-  await execFileAsync('launchctl', ['bootstrap', domain, plistPath()]);
+  // ensureInstalled trusts an existing plist, so one that never loaded must not be left behind.
+  await execFileAsync('launchctl', ['bootstrap', domain, plistPath()])
+    .catch(async error => { await rm(plistPath(), { force: true }); throw error; });
   return { installed: true, plist: plistPath() };
 }
 
