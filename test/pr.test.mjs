@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
-test('--prはリポジトリをキャッシュにクローンし、PRのheadを読ませ、資料をPRから補う', async () => {
+async function setup({ cloneDelay = 0 } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   const work = join(dir, 'work');
   const remote = join(dir, 'remote.git');
@@ -30,7 +30,7 @@ echo "$*" >> "${ghLog}"
 case "$1 $2" in
   "pr view") echo '{"number":7,"url":"https://example.test/acme/widget/pull/7","title":"PRのタイトル","body":"PRの本文","baseRefName":"main"}' ;;
   "pr diff") printf 'diff --git a/lib.js b/lib.js\\n-base\\n+pr-head\\n' ;;
-  "repo clone") git clone -q --no-checkout "${remote}" "$4" ;;
+  "repo clone") sleep ${cloneDelay}; git clone -q --no-checkout "${remote}" "$4" ;;
   *) exit 1 ;;
 esac
 `);
@@ -46,17 +46,25 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   await chmod(cli, 0o755);
 
   const state = join(dir, 'state');
-  const run = async (output, extraArgs = []) => {
+  const runWithLog = async (output, extraArgs = []) => {
     const child = spawn(process.execPath, [runner, '--pr', '7', '--output', join(dir, output), '--reviewer', 'claude:m', ...extraArgs], {
-      stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir, XDG_STATE_HOME: state, REVIEW_TEAM_CLAUDE_CLI: cli },
+      stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir, XDG_STATE_HOME: state, REVIEW_TEAM_CLAUDE_CLI: cli },
     });
-    return new Promise(resolve => child.on('exit', resolve));
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    const code = await new Promise(resolve => child.on('close', resolve));
+    return { code, stderr };
   };
+  const run = async (...args) => (await runWithLog(...args)).code;
+  const cache = join(state, 'review-team', 'repos', 'example.test', 'acme', 'widget');
+  return { dir, head, ghLog, report, cache, run, runWithLog };
+}
 
+test('--prはリポジトリをキャッシュにクローンし、PRのheadを読ませ、資料をPRから補う', async () => {
+  const { dir, head, ghLog, report, cache, run } = await setup();
   assert.equal(await run('out1'), 0);
   assert.equal(await run('out2'), 0);
   assert.equal(await readFile(report, 'utf8'), 'pr-head\n');
-  const cache = join(state, 'review-team', 'repos', 'example.test', 'acme', 'widget');
   const manifest = JSON.parse(await readFile(join(dir, 'out2', 'manifest.json'), 'utf8'));
   assert.deepEqual(manifest.repository, { path: cache, ref: 'pull/7/head', commit: head,
     pr: { url: 'https://example.test/acme/widget/pull/7', number: 7, base: 'main' } });
@@ -77,4 +85,28 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
 test('--prと--repoは同時に指定できない', async () => {
   const child = spawn(process.execPath, [runner, '--pr', '1', '--repo', '.', '--output', join(tmpdir(), 'unused')], { stdio: 'ignore' });
   assert.equal(await new Promise(resolve => child.on('exit', resolve)), 2);
+});
+
+test('--prは段階ごとの進捗をstderrに書く。クローンの行は初回だけ出る', async () => {
+  const { dir, runWithLog } = await setup();
+  const first = await runWithLog('out1');
+  assert.equal(first.code, 0);
+  const stages = ['PRを取得しています', 'リポジトリをキャッシュへクローンしています', 'PRのコミットを取得しています',
+    'PRの差分を取得しています', 'レビュアーを起動しました: claude', 'claude が終わりました: ok'];
+  const lines = first.stderr.trim().split('\n');
+  const indexes = stages.map(stage => lines.findIndex(line => line.includes(stage)));
+  assert.deepEqual(indexes, [...indexes].sort((a, b) => a - b), first.stderr);
+  assert.ok(!indexes.includes(-1), first.stderr);
+  assert.ok(lines.every(line => /^\[review-team \d{4}-\d\d-\d\dT[^\]]+\] /.test(line)), first.stderr);
+  const second = await runWithLog('out2');
+  assert.equal(second.code, 0);
+  assert.doesNotMatch(second.stderr, /クローンしています/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--prを同じリポジトリで並行して初回起動しても、両方が完成したキャッシュを使う', async () => {
+  const { dir, cache, run } = await setup({ cloneDelay: 1 });
+  assert.deepEqual(await Promise.all([run('out1'), run('out2')]), [0, 0]);
+  assert.deepEqual((await readdir(dirname(cache))).filter(name => name !== 'widget'), [], 'クローン途中の一時ディレクトリが残っています');
+  await rm(dir, { recursive: true, force: true });
 });

@@ -60,6 +60,8 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" ... > "$OUTPUT.log" 2>&1; echo $? > 
 
 完了通知を当てにせず、次のコマンドを前面で繰り返し実行して `"$OUTPUT.exit"` ができるまで待つ。1回の実行がホストの時間制限で打ち切られたら、同じコマンドをもう一度実行する。
 
+runner は段階ごと（PR の取得、クローン、fetch、レビュアーの起動と終了）に進捗を stderr へ 1 行ずつ書くので、進み具合は `"$OUTPUT.log"` で分かる。`--pr` では PR の取得とクローンが終わってから出力先を作るため、それまでは `"$OUTPUT"` が無い。初回のクローンは数分かかることがある。出力先やログの中身が無くても、`"$OUTPUT.exit"` ができるまでは失敗とみなして別の出力先で起動し直さない。起動し直すと、各レビュアーが2回実行され、料金も2回分かかる。
+
 ```sh
 for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$OUTPUT.exit" 2>/dev/null; ls "$OUTPUT" 2>/dev/null
 ```
