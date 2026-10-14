@@ -32,6 +32,8 @@ esac
 for last; do :; done
 echo "$*" >> "${leadLog}"
 [ -f "${join(dir, 'lead-fails')}" ] && exit 1
+[ -f "${join(dir, 'lead-hangs')}" ] && sleep 60
+[ -f "${join(dir, 'lead-removes')}" ] && "${process.execPath}" "${watcher}" remove "${prUrl}" > /dev/null
 out="${dir}/out-$$"
 mkdir "$out"
 head=$(sed -n 's/.*"headRefOid":"\\([^"]*\\)".*/\\1/p' "${pr}")
@@ -41,7 +43,8 @@ cp "${diff}" "$out/reviewed.diff"
 `);
   await chmod(join(bin, 'gh'), 0o755);
   await chmod(lead, 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), REVIEW_TEAM_LEAD_CLI: lead };
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'),
+    REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1' };
   delete env.REVIEW_TEAM_DEPTH;
   const setPr = (fields) => writeFile(pr, JSON.stringify({ data: { resource: {
     state: 'OPEN', isDraft: false, headRefOid: 'aaa', committedDate: minutesAgo(30), ...fields,
@@ -74,7 +77,7 @@ cp "${diff}" "$out/reviewed.diff"
     await writeFile(join(out, 'reviewed.diff'), await readFile(diff));
     return JSON.parse((await cli('record', '--output', out, ...extra)).stdout);
   };
-  return { dir, diff, leadLog, setPr, cli, state, tick, register };
+  return { dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
 }
 
 test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
@@ -83,7 +86,7 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   await t.setPr({ headRefOid: 'aaa' });
   const result = await t.register('aaa', ['--effort', 'max']);
   assert.equal(result.registered, true);
-  assert.match(result.schedule.cron, /^\*\/10 \* \* \* \* .* tick /);
+  assert.match(result.schedule.cron, /^\*\/10 \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
   const s = await t.state();
   assert.equal(s.effort, 'max');
   assert.equal(s.maxRereviews, 3);
@@ -165,4 +168,40 @@ test('投稿を記録しなかった再レビューは失敗として数え、2�
   // Registering again after a stop starts a fresh watch.
   assert.equal((await expired.register('aaa')).registered, true);
   assert.equal((await expired.state()).stoppedReason, null);
+});
+
+test('止まらない再レビューは制限時間で止めて失敗に数え、期限切れはGitHubに届かなくても止まる', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-hangs'), '');
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'bbb' });
+  await t.tick();
+  const s = await t.state();
+  assert.equal(s.failures, 1);
+  assert.equal(s.lastExitCode, 'SIGTERM');
+
+  const offline = await setup();
+  await offline.setPr({ headRefOid: 'aaa' });
+  await writeFile(offline.diff, 'diff\n');
+  await offline.register('aaa', ['--ttl-hours', '0']);
+  await writeFile(offline.pr, 'not json');
+  assert.match(await offline.tick(), /stop \(expired\)/);
+});
+
+test('再レビュー中に解除したウォッチは、その再レビューの記録で戻らない', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-removes'), '');
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'bbb' });
+  const { stdout } = await t.cli('tick');
+  assert.match(stdout, /: review$/m);
+  for (let i = 0; i < 100 && await stat(t.stateFile).catch(() => null); i++) await new Promise(done => setTimeout(done, 50));
+  for (let i = 0; i < 100 && await stat(`${t.stateFile}.lock`).catch(() => null); i++) await new Promise(done => setTimeout(done, 50));
+  assert.equal(await stat(t.stateFile).catch(() => null), null);
 });
