@@ -6,16 +6,18 @@
 
 投稿は試行ごとに `$OUTPUT/github/<試行番号>/`（以下 `$ATTEMPT`、番号は 1 から）で行い、ファイルを上書きしない。
 
-- `plan.json`、`summary.md`、`thread-<i>.md`: 利用者が承認した投稿内容。承認後は変えない。
+- `plan.json`、`summary.md`、`thread-<i>.md`、`previous-<j>.md`: 利用者が承認した投稿内容。承認後は変えない。
 - `<名前>.json` と `<名前>.out.json`: 送った要求と、受け取った応答。要求は送る前に書く。
 
 ```json
 { "pr": "https://github.com/o/r/pull/7", "commit": "<repository.commit>", "login": "<viewer.login>",
   "threads": [{ "finding": "claude:1", "path": "src/a.js", "line": 42, "side": "RIGHT", "text": "  return cache.get(key);",
-    "startLine": 40, "startSide": "RIGHT" }] }
+    "startLine": 40, "startSide": "RIGHT" }],
+  "previous": [{ "thread": "<スレッドの ID>", "url": "<最初のコメントの URL>", "action": "resolve",
+    "lastComment": "<取得したときの最後のコメントの ID>" }] }
 ```
 
-`threads` の i 番目（1 から数える）の本文は `thread-<i>.md`、総評は `summary.md` に置く。`text` は `line` の行の内容で、本書の2節の一覧から写す。単一行の指摘では `startLine` と `startSide` を書かない。
+`threads` の i 番目（1 から数える）の本文は `thread-<i>.md`、`previous` の j 番目の返信の本文は `previous-<j>.md`、総評は `summary.md` に置く。`previous` は本書の2節「前回のスレッド」で決め、無ければ空の配列にする。`text` は `line` の行の内容で、本書の2節の一覧から写す。単一行の指摘では `startLine` と `startSide` を書かない。
 
 更新要求（mutation）の応答は次のように読む。
 
@@ -33,7 +35,7 @@
 - `create` が届かなかった。`create` が結果不明で、本書の1b のクエリで自分の pending review が0件である。
 - 捨てた。`create` をまだ送っていない試行は、再開せずに捨てる。
 
-やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md` を写してよい。結果不明の `create` や `thread-<i>` がある試行を、同じ下書きのまま続けない。`submit` が結果不明のときは、本書の4節「止めるとき」に従う。
+やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md`、`previous-<j>.md` を写してよい。結果不明の `create` や `thread-<i>` がある試行を、同じ下書きのまま続けない。`submit` が結果不明のときは、本書の4節「止めるとき」に従う。
 
 ## 1. 投稿できる状態か確かめる
 
@@ -139,6 +141,10 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 ### Consider(要検討)
 差分の外にあり、インラインにできなかったもの。インラインの Consider と同じ4項目を、Act On と同じく番号付きの見出しの下に書く。
 
+### 前回の指摘
+resolve する <n> 件、開けたままにする <m> 件。
+- [<前回の指摘の見出し>](<最初のコメントの URL>) → <結論と根拠>（`path:line`）。<resolve する／開けたままにする理由>
+
 ### 確認した点
 - <確かめた懸念や観点> → <結論>（`path:line`）
 
@@ -172,11 +178,80 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 
 「一次資料」には、確認に使った資料のうち、リンクを示せるもの（PR の本文からたどった Issue や仕様、利用者が渡した資料など）を、実際に読んだものだけ書く。PR の差分と対象コミットは「対象コミット」の行で示しているので重ねない。
 
+「前回の指摘」には、本書の2節「前回のスレッド」で扱いを決めた全件を書く。resolve は投稿を確かめたあと（本書の6節）に行うので、「resolve する」と書く。
+
 「良い点」の節は作らない。良い点は「確認した点」の結論として、根拠の箇所と一緒に書く。テストやビルドを実行していないことや、確かめていない範囲を書く欄も作らない。欄があると決まり文句で埋めてしまうからである。
 
-空の見出しは書かない。「確認した点」と「一次資料」も、書くものがなければ節ごと省く。インラインの指摘は総評に重複させない。
+空の見出しは書かない。「前回の指摘」「確認した点」「一次資料」も、書くものがなければ節ごと省く。インラインの指摘は総評に重複させない。
 
-完了条件: Act On と Consider の全件が、インライン・総評・利用者の判断で外したもののどれかに割り当てられている。
+### 前回のスレッド
+
+review-team が前回までに始めたスレッドが PR にあれば、今回の判定と合わせて一件ずつ扱いを決める。初回のレビューのように一件も無ければ、何もせず `previous` を空にする。
+
+スレッドは次のクエリで取る。`hasNextPage` が `true` なら、`endCursor` を `$after` に渡して続きを取る。
+
+```graphql
+query($url: URI!, $after: String) {
+  resource(url: $url) {
+    ... on PullRequest {
+      author { login }
+      reviewThreads(first: 50, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id isResolved viewerCanResolve path line
+          comments(first: 100) {
+            totalCount
+            nodes { id url body author { login } pullRequestReview { body } }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+対象にするのは、次のすべてを満たすスレッドだけである。人やほかのボットが始めたスレッドは、内容にかかわらず触れない。
+
+- 最初のコメントの `author.login` が `viewer.login` と同じ。
+- 最初のコメントの `pullRequestReview.body` に、総評の末尾の `(https://github.com/yuki777/review-team)` へのリンクがある。
+- `isResolved` が `false` で、`totalCount` が 100 以下である。100 を超えるスレッドは全部の発言を読めないので、開けたままにする。
+
+リードは、各スレッドの最初のコメント（前回の指摘）とその後の発言を読み、新しい head のコードを SKILL.md 3節と同じく `git -C <path> show <commit>:<ファイル>` で開いて、次のどれかに決める。
+
+| 結論 | 扱い |
+| --- | --- |
+| 直った: 指摘した問題が直っていることを、新しい head の `path:line` で確かめた | 返信して resolve する |
+| 誤りだった: 前回の指摘そのものが誤りだったと判断した（作者の反論が正しかった場合など） | 誤りを認めて取り下げる返信をして resolve する |
+| 一部だけ直った | 残っている点を返信し、開けたままにする |
+| 作者が理由を付けて「対応しない」と返した | 返信せず、開けたままにする。受け入れるかは人が決める |
+| 直っていない、または確かめられなかった | 返信せず、開けたままにする |
+
+元の指摘は直っていて、別の経路の問題が新しく見つかった場合は、元のスレッドを「直った」として resolve し、新しい問題は今回の指摘として本書の2節の表のとおりに投稿する。
+
+「直った」と「誤りだった」でも、そのスレッドの `viewer.login` の最後のコメントより後に、今回の返信で答えられない他の人の発言があれば resolve しない。答えられる発言は、PR の作者（クエリの `author.login`）の「直しました」「再現しません」のような返答と、リードが正しいと認めた作者の反論だけである。作者かどうかは発言の `author.login` で比べ、文面で推し量らない。質問、作者以外の発言、リードが認めなかった反論があれば、開けたままにして総評で触れる。
+
+開けたままにする前回のスレッドと同じ問題は、新しいインラインに重ねず、総評の「前回の指摘」に書く。
+
+`viewerCanResolve` が `false` のスレッドは、今のアカウントでは resolve できないので、「直った」「誤りだった」でも返信だけにして開けたままにし、そのことを総評に書く。
+
+返信する件（resolve する件、「一部だけ直った」件、resolve できない件）を、`previous` に `thread`、`url`、`action`（resolve するなら `resolve`、返信だけなら `reply`）、`lastComment` を付けて並べる。返信の本文は PR のタイトルと本文の言語に合わせ、次の形にする。`<commit>` は `plan.json` の `commit` の先頭 12 桁、`{{review}}` は本書の6節で今回のレビューの URL に置き換える目印で、そのまま書く。
+
+```markdown
+<!-- 直った -->
+<commit> で直っていることを確かめました（`path:line`）。詳しくは[今回の総評]({{review}})にあります。
+
+<!-- 誤りだった -->
+この指摘は誤りでした。取り下げます。詳しくは[今回の総評]({{review}})にあります。
+
+<!-- 一部だけ直った -->
+<commit> で一部が直っています。残っている点: <残る点>（`path:line`）。詳しくは[今回の総評]({{review}})にあります。
+```
+
+コメント行（`<!-- -->`）は場合を示すためのもので、本文には入れない。
+
+理由の無いまま閉じると、後から読む人に経緯が分からない。詳しい根拠は総評の「前回の指摘」に書く。
+
+完了条件: Act On と Consider の全件が、インライン・総評・利用者の判断で外したもののどれかに割り当てられている。review-team が始めた未解決の前回のスレッドの全件が、resolve する・返信だけする・開けたままにするのどれかに決まっている。
 
 ## 3. プレビューを見せて承認を得る
 
@@ -186,10 +261,11 @@ Consider のインラインは見出しを `⚠️ **Consider(要検討)**` に�
 - 総評の全文。
 - インラインコメントごとの `path`、行（範囲なら開始行も）、`side`、その行の内容（`text`）、本文。
 - 投稿しないことにした Act On と Consider の一覧。
+- resolve するスレッドと返信だけするスレッドごとの URL、付ける返信の本文。開けたままにする前回のスレッドの URL と理由。
 
-利用者が外したり書き換えたりしたら、もう一度全体を見せる。承認されたら、新しい `$ATTEMPT` を作り、承認した内容をそのまま `plan.json`、`summary.md`、`thread-<i>.md` に書く。書いたら、各 thread の `path`、`side`、`line`、`text` の組が本書の2節の一覧にあることを確かめる。無ければ位置を選び直し、承認からやり直す。以後はこのファイルだけを投稿し、内容を変えるときは承認からやり直す。
+利用者が外したり書き換えたりしたら、もう一度全体を見せる。承認されたら、新しい `$ATTEMPT` を作り、承認した内容をそのまま `plan.json`、`summary.md`、`thread-<i>.md`、`previous-<j>.md` に書く。書いたら、各 thread の `path`、`side`、`line`、`text` の組が本書の2節の一覧にあることを確かめる。無ければ位置を選び直し、承認からやり直す。以後はこのファイルだけを投稿し、内容を変えるときは承認からやり直す。
 
-起動時に `--comment` が付いていれば、プレビューへの同意をすでに得たものとして扱う。プレビューは見せるが、返事を待たずに新しい `$ATTEMPT` を書く。書いたあと、各 thread の組が本書の2節の一覧にあるかの照合は、この場合も行う。一覧に無い組があれば、位置を選び直したプレビューを見せ、返事を待たずに新しい `$ATTEMPT` に書く。照合が通ったら本書の4節へ進む。本書の1b と4節の止める条件と、下書きを削除する前の同意は、この場合も省かない。
+起動時に `--comment` が付いていれば、プレビューへの同意をすでに得たものとして扱う。前回のスレッドへの返信と resolve も、この同意に含む。プレビューは見せるが、返事を待たずに新しい `$ATTEMPT` を書く。書いたあと、各 thread の組が本書の2節の一覧にあるかの照合は、この場合も行う。一覧に無い組があれば、位置を選び直したプレビューを見せ、返事を待たずに新しい `$ATTEMPT` に書く。照合が通ったら本書の4節へ進む。本書の1b と4節の止める条件と、下書きを削除する前の同意は、この場合も省かない。
 
 `--comment` を承認とみなすのは、レビューのあと最初の投稿の流れで見せたプレビューだけである。止まったあとにプレビューからやり直すとき（本書の1a からのやり直しを含む）は、通常どおり返事を待つ。
 
@@ -284,6 +360,70 @@ mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
 - `body` が `summary.md` と、末尾の改行を除いて同じである。
 - コメントの件数、`id`、`path`、`line`、`body` が、`plan.json` と各 `thread-<i>` のファイルと一致している。
 
-利用者には、レビューの URL と、インラインと総評の件数を伝える。各指摘の出典 ID と、その投稿先（コメントの URL または総評）の対応も伝える。投稿しなかった指摘と、その理由も伝える。
+一致したら、本書の6節で前回のスレッドを片付けてから報告する。
 
-完了条件: 投稿されたレビューが GitHub 上で確認でき、承認した内容と一致し、利用者に対応が報告されている。
+利用者には、レビューの URL と、インラインと総評の件数を伝える。各指摘の出典 ID と、その投稿先（コメントの URL または総評）の対応も伝える。投稿しなかった指摘と、その理由も伝える。resolve したスレッドの URL、返信だけしたスレッドの URL、開けたままにした前回のスレッドとその理由、本書の6節で飛ばした件とその理由も伝える。
+
+完了条件: 投稿されたレビューが GitHub 上で確認でき、承認した内容と一致し、本書の6節を終え、利用者に対応が報告されている。
+
+## 6. 前回のスレッドを片付ける
+
+`plan.json` の `previous` が空なら何もしない。本書の5節で今回のレビューを確かめたあとにだけ行う。投稿が止まった試行（本書の1b・4節）では、返信も resolve もしない。`--rereview` で起動された場合も同じ手順で行う。
+
+始める前に、本書の1b の状態確認をもう一度行い、`viewer.login` が `plan.json` の `login` と同じことも確かめる。`headRefOid` が `plan.json` の `commit` と違えば、確かめたあとに push があり、直ったとした問題が戻っているかもしれないので、どの件も返信も resolve もせずに止め、利用者に伝える。`state` が `OPEN` でなくなっていても同じく止める。
+
+下の GraphQL は、本書の4節と同じく `$ATTEMPT/<名前>.graphql`（`add-reply`、`resolve-thread`、`fetch-thread`）に書き出して使う。`previous` の j 番目（1 から数える）を、一件ずつ順に処理する。要求と応答は `previous-<j>-fetch-<n>`（n は 1 から増やす）、`previous-<j>-reply`、`previous-<j>-resolve` の名前で置く。前の試行の続きで、`previous-<j>-resolve` が成功している件や、`action` が `reply` で `previous-<j>-reply` が成功している件は飛ばす。
+
+まず、返信を組み立てて要求ファイルに書く。`$REVIEW_URL` は本書の5節で取り直したレビューの `url` である。要求ファイルがすでにあれば、組み立て直さずにそれを使う。
+
+```sh
+jq -n --rawfile query "$ATTEMPT/add-reply.graphql" --rawfile body "$ATTEMPT/previous-$j.md" \
+  --arg url "$REVIEW_URL" --slurpfile plan "$ATTEMPT/plan.json" --argjson j "$j" \
+  '{query: $query, variables: {thread: $plan[0].previous[$j - 1].thread,
+    body: ($body | gsub("\\{\\{review\\}\\}"; $url))}}' > "$ATTEMPT/previous-$j-reply.json"
+```
+
+返信を送る前と resolve を送る前に、そのつどスレッドを取り直す（`previous-<j>-fetch-<n>`）。
+
+```graphql
+query($thread: ID!) {
+  node(id: $thread) {
+    ... on PullRequestReviewThread {
+      isResolved
+      comments(last: 100) { nodes { id body author { login } } }
+    }
+  }
+}
+```
+
+取得したコメントのうち、`lastComment` より後のものを見て判定する。
+
+- `isResolved` が `false` で、`lastComment` より後のコメントが無ければ、返信はまだ届いていない。`previous-<j>-reply.out.json` が無ければ返信を送る。結果不明の返信があるなら、送り直さずにこの件を飛ばす。
+- `isResolved` が `false` で、`lastComment` より後のコメントがちょうど1件、`viewer.login` のもので本文が要求の `body` と末尾の改行を除いて同じなら、返信は届いている。
+- それ以外（プレビューのあとに他の発言がある、`lastComment` が取得したコメントの中に無い、`NOT_FOUND`、すでに resolve されている）なら、この件は以後、返信も resolve もせずに飛ばす。
+
+返信は次の要求で送る（`previous-<j>-reply`）。成功は、応答にコメントの `id` があることで判断する。
+
+```graphql
+mutation($thread: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $thread, body: $body }) {
+    comment { id url }
+  }
+}
+```
+
+`action` が `resolve` なら、取り直して返信が届いていることと、ほかに新しい発言が無いことを上の判定で確かめてから、スレッドを resolve する（`previous-<j>-resolve`）。返信を送ってから resolve するまでの間に他の発言があれば、resolve せずに飛ばす。
+
+```graphql
+mutation($thread: ID!) {
+  resolveReviewThread(input: { threadId: $thread }) {
+    thread { id isResolved }
+  }
+}
+```
+
+応答の `isResolved` が `true` でも、スレッドを取り直して `isResolved` が `true` であることを確かめる。結果不明のときもこの取得で判定し、まだ `false` なら `previous-<j>-resolve-2` の名前で一度だけ送り直してよい。resolve は重ねても結果が変わらない。
+
+飛ばした件や確かめられなかった件があっても、残りの件は続ける。今回のレビューはすでに投稿されているので、ここで下書きの削除や投稿のやり直しはしない。
+
+完了条件: `previous` の各件が、取り直した状態で返信済み（`resolve` なら `isResolved` が `true`）か、飛ばした理由が分かっている。
