@@ -127,6 +127,23 @@ test('新しいheadは次のtickでも変わっていなければ再レビュー
   assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/3 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
+test('再レビューは登録時のレビューと同じレビュアーで起動する', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-a');
+  const out = await mkdtemp(join(t.dir, 'first-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } },
+    reviewers: [{ cli: 'claude', requestedModel: 'claude-opus-5-5', requestedEffort: 'high' },
+      { cli: 'grok', requestedModel: 'grok-4.7', requestedEffort: 'max' }] }));
+  await writeFile(join(out, 'reviewed.diff'), 'diff-a');
+  await t.cli('record', '--output', out);
+  await t.setPr({ headRefOid: 'bbb' });
+  await writeFile(t.diff, 'diff-b');
+  await t.tickAfterQuiet();
+  assert.match(await readFile(t.leadLog, 'utf8'),
+    / --rereview 1\/3 --reviewer claude:claude-opus-5-5:high --reviewer grok:grok-4.7:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
+});
+
 test('再レビューは上限で止まり、マージでも止まる', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });

@@ -165,8 +165,10 @@ node "$SKILL_DIR/scripts/watch-pr.mjs" record --output "$OUTPUT" --effort <ホ�
 定期実行（tick）は LLM を使わずに PR を見回り、新しい push があった PR についてだけ、次の形でこのスキルを起動する。
 
 ```sh
-claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment --rereview <n>/<上限> <PR-URL>"
+claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment --rereview <n>/<上限> --reviewer <cli>:<model>:<effort> ... <PR-URL>"
 ```
+
+`--reviewer` は、登録したときのレビューで使ったレビュアー全員の分が付く（manifest の `reviewers` から `record` が記録する）。利用者が最初に外したレビュアーは、再レビューでも外れたままになる。
 
 `--rereview <n>/<上限>` で起動された場合:
 
