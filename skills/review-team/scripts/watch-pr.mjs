@@ -125,8 +125,10 @@ async function record(values) {
     console.log(JSON.stringify({ registered: false, state: file, reason: 'ウォッチは再レビュー中に解除または停止されたので、登録し直しません。' }, null, 2));
     return;
   }
+  // Re-reviews use the reviewers of the first review, so a reviewer the user left out stays out.
+  const reviewers = (manifest.reviewers ?? []).map(r => `${r.cli}:${r.requestedModel}:${r.requestedEffort}`);
   const state = previous ?? {
-    pr: url, effort: values.effort ?? 'xhigh',
+    pr: url, effort: values.effort ?? 'xhigh', reviewers,
     maxRereviews, registeredAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + ttlHours * 3600 * 1000).toISOString(),
     rereviews: 0, failures: 0, stoppedReason: null,
@@ -215,7 +217,10 @@ async function run(file) {
     const logs = join(watchDir(), 'logs');
     await mkdir(logs, { recursive: true, mode: 0o700 });
     const log = await open(join(logs, `${startedAt.replace(/[:.]/g, '-')}-${parsePrUrl(state.pr).number}.log`), 'w', 0o600);
-    const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${state.pr}`;
+    // Watches registered before reviewers were recorded keep the default of that time, which had no agy.
+    const reviewers = state.reviewers ?? ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high', 'grok:grok-4.7-build-fast:high'];
+    const reviewerArgs = reviewers.map(spec => `--reviewer ${spec} `).join('');
+    const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
     const code = await new Promise(done => {
       // The lead runs in its own process group so a hung run can be stopped with its reviewers,
