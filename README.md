@@ -8,6 +8,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 
 - Node.js 22 以降、macOS または Linux
 - 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`・`grok`・`agy`（Antigravity CLI）
+- 既定の agy は `gemini-4-argon-high` を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新するか「Gemini は外して」と頼んでください
 
 ## インストール
 
