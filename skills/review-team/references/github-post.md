@@ -35,7 +35,7 @@
 - `create` が届かなかった。`create` が結果不明で、本書の1b のクエリで自分の pending review が0件である。
 - 捨てた。`create` をまだ送っていない試行は、再開せずに捨てる。
 
-やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md` を写してよい。結果不明の `create` や `thread-<i>` がある試行を、同じ下書きのまま続けない。`submit` が結果不明のときは、本書の4節「止めるとき」に従う。
+やり直しは本書の1節から、新しい `$ATTEMPT` で行う。承認した内容を変えないなら、前の試行の `plan.json`、`summary.md`、`thread-<i>.md`、`previous-<j>.md` を写してよい。結果不明の `create` や `thread-<i>` がある試行を、同じ下書きのまま続けない。`submit` が結果不明のときは、本書の4節「止めるとき」に従う。
 
 ## 1. 投稿できる状態か確かめる
 
@@ -194,10 +194,11 @@ review-team が前回までに始めたスレッドが PR にあれば、今回�
 query($url: URI!, $after: String) {
   resource(url: $url) {
     ... on PullRequest {
+      author { login }
       reviewThreads(first: 50, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
-          id isResolved path line
+          id isResolved viewerCanResolve path line
           comments(first: 100) {
             totalCount
             nodes { id url body author { login } pullRequestReview { body } }
@@ -227,11 +228,13 @@ query($url: URI!, $after: String) {
 
 元の指摘は直っていて、別の経路の問題が新しく見つかった場合は、元のスレッドを「直った」として resolve し、新しい問題は今回の指摘として本書の2節の表のとおりに投稿する。
 
-「直った」と「誤りだった」でも、そのスレッドの `viewer.login` の最後のコメントより後に、今回の返信で答えられない他の人の発言があれば resolve しない。答えられる発言は、作者の「直しました」「再現しません」のような返答と、リードが正しいと認めた作者の反論だけである。質問、作者以外の発言、リードが認めなかった反論があれば、開けたままにして総評で触れる。
+「直った」と「誤りだった」でも、そのスレッドの `viewer.login` の最後のコメントより後に、今回の返信で答えられない他の人の発言があれば resolve しない。答えられる発言は、PR の作者（クエリの `author.login`）の「直しました」「再現しません」のような返答と、リードが正しいと認めた作者の反論だけである。作者かどうかは発言の `author.login` で比べ、文面で推し量らない。質問、作者以外の発言、リードが認めなかった反論があれば、開けたままにして総評で触れる。
 
 開けたままにする前回のスレッドと同じ問題は、新しいインラインに重ねず、総評の「前回の指摘」に書く。
 
-返信する件（resolve する件と「一部だけ直った」件）を、`previous` に `thread`、`url`、`action`（resolve するなら `resolve`、返信だけなら `reply`）、`lastComment` を付けて並べる。返信の本文は PR のタイトルと本文の言語に合わせ、次の形にする。`<commit>` は `plan.json` の `commit` の先頭 12 桁、`{{review}}` は本書の6節で今回のレビューの URL に置き換える目印で、そのまま書く。
+`viewerCanResolve` が `false` のスレッドは、今のアカウントでは resolve できないので、「直った」「誤りだった」でも返信だけにして開けたままにし、そのことを総評に書く。
+
+返信する件（resolve する件、「一部だけ直った」件、resolve できない件）を、`previous` に `thread`、`url`、`action`（resolve するなら `resolve`、返信だけなら `reply`）、`lastComment` を付けて並べる。返信の本文は PR のタイトルと本文の言語に合わせ、次の形にする。`<commit>` は `plan.json` の `commit` の先頭 12 桁、`{{review}}` は本書の6節で今回のレビューの URL に置き換える目印で、そのまま書く。
 
 ```markdown
 <!-- 直った -->
@@ -367,6 +370,8 @@ mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
 
 `plan.json` の `previous` が空なら何もしない。本書の5節で今回のレビューを確かめたあとにだけ行う。投稿が止まった試行（本書の1b・4節）では、返信も resolve もしない。`--rereview` で起動された場合も同じ手順で行う。
 
+始める前に、本書の1b の状態確認をもう一度行い、`viewer.login` が `plan.json` の `login` と同じことも確かめる。`headRefOid` が `plan.json` の `commit` と違えば、確かめたあとに push があり、直ったとした問題が戻っているかもしれないので、どの件も返信も resolve もせずに止め、利用者に伝える。`state` が `OPEN` でなくなっていても同じく止める。
+
 下の GraphQL は、本書の4節と同じく `$ATTEMPT/<名前>.graphql`（`add-reply`、`resolve-thread`、`fetch-thread`）に書き出して使う。`previous` の j 番目（1 から数える）を、一件ずつ順に処理する。要求と応答は `previous-<j>-fetch-<n>`（n は 1 から増やす）、`previous-<j>-reply`、`previous-<j>-resolve` の名前で置く。前の試行の続きで、`previous-<j>-resolve` が成功している件や、`action` が `reply` で `previous-<j>-reply` が成功している件は飛ばす。
 
 まず、返信を組み立てて要求ファイルに書く。`$REVIEW_URL` は本書の5節で取り直したレビューの `url` である。要求ファイルがすでにあれば、組み立て直さずにそれを使う。
@@ -378,22 +383,24 @@ jq -n --rawfile query "$ATTEMPT/add-reply.graphql" --rawfile body "$ATTEMPT/prev
     body: ($body | gsub("\\{\\{review\\}\\}"; $url))}}' > "$ATTEMPT/previous-$j-reply.json"
 ```
 
-返信を送る前に、スレッドを取り直す（`previous-<j>-fetch-<n>`）。
+返信を送る前と resolve を送る前に、そのつどスレッドを取り直す（`previous-<j>-fetch-<n>`）。
 
 ```graphql
 query($thread: ID!) {
   node(id: $thread) {
     ... on PullRequestReviewThread {
       isResolved
-      comments(last: 1) { nodes { id body author { login } } }
+      comments(last: 100) { nodes { id body author { login } } }
     }
   }
 }
 ```
 
-- 最後のコメントが `lastComment` で、`isResolved` が `false` なら、返信はまだ届いていない。`previous-<j>-reply.out.json` が無ければ返信を送る。結果不明の返信があるなら、送り直さずにこの件を飛ばす。
-- 最後のコメントが `viewer.login` のもので、本文が要求の `body` と末尾の改行を除いて同じなら、返信は届いている。
-- それ以外（プレビューのあとに新しい発言がある、`NOT_FOUND`、すでに resolve されている）なら、この件は返信も resolve もせずに飛ばす。
+取得したコメントのうち、`lastComment` より後のものを見て判定する。
+
+- `isResolved` が `false` で、`lastComment` より後のコメントが無ければ、返信はまだ届いていない。`previous-<j>-reply.out.json` が無ければ返信を送る。結果不明の返信があるなら、送り直さずにこの件を飛ばす。
+- `isResolved` が `false` で、`lastComment` より後のコメントがちょうど1件、`viewer.login` のもので本文が要求の `body` と末尾の改行を除いて同じなら、返信は届いている。
+- それ以外（プレビューのあとに他の発言がある、`lastComment` が取得したコメントの中に無い、`NOT_FOUND`、すでに resolve されている）なら、この件は以後、返信も resolve もせずに飛ばす。
 
 返信は次の要求で送る（`previous-<j>-reply`）。成功は、応答にコメントの `id` があることで判断する。
 
@@ -405,7 +412,7 @@ mutation($thread: ID!, $body: String!) {
 }
 ```
 
-返信が届いていて `action` が `resolve` なら、スレッドを resolve する（`previous-<j>-resolve`）。
+`action` が `resolve` なら、取り直して返信が届いていることと、ほかに新しい発言が無いことを上の判定で確かめてから、スレッドを resolve する（`previous-<j>-resolve`）。返信を送ってから resolve するまでの間に他の発言があれば、resolve せずに飛ばす。
 
 ```graphql
 mutation($thread: ID!) {
