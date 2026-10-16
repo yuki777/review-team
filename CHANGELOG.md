@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.14](https://github.com/yuki777/review-team/compare/v0.1.13...v0.1.14) - 2026-10-16
+
+- docs(review-team): 再レビューで直ったと確かめた前回の指摘のスレッドを resolve する by @yuki777 in https://github.com/yuki777/review-team/pull/55
+
 ## [v0.1.13](https://github.com/yuki777/review-team/compare/v0.1.12...v0.1.13) - 2026-10-16
 
 - 既定のレビュアーに agy:gemini-4-argon-high:high を追加する by @yuki777 in https://github.com/yuki777/review-team/pull/52
