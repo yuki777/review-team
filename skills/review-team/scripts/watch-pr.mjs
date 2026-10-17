@@ -10,8 +10,9 @@ import { parseArgs, promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const script = fileURLToPath(import.meta.url);
 // A new head is reviewed once a later tick still sees it after this quiet time, so pushes in a row are reviewed once.
-const quietMs = () => Number(process.env.REVIEW_TEAM_QUIET ?? 300) * 1000;
-const intervalSeconds = 600;
+// Each re-review overtaken by a push doubles it, up to four times the base (5, 10, then 20 minutes).
+const quietMs = (state = {}) => Number(process.env.REVIEW_TEAM_QUIET ?? 300) * 1000 * 2 ** Math.min(state.supersededRuns ?? 0, 2);
+const intervalSeconds = 60;
 const leadTimeoutMs = () => Number(process.env.REVIEW_TEAM_LEAD_TIMEOUT || 5400) * 1000;
 const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
@@ -19,15 +20,18 @@ const help = `review-team watch: 投稿したPRに新しいpushがあれば、�
 
 node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--max-rereviews 3] [--ttl-hours 12]
     投稿に成功したレビューを記録する。未登録のPRなら登録し、tick の定期実行が未登録なら登録する
+node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--max-rereviews 3] [--ttl-hours 12]
+    レビュー中にheadが進み続けて投稿できなかったPRを、レビュー済みのcommitなしで登録し、最初の投稿をtickに任せる
 node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なものだけ再レビューを起動する（定期実行の本体）
 node watch-pr.mjs list       ウォッチ中・停止済みのPRを表示する
 node watch-pr.mjs remove <PR-URL>
                              ウォッチをやめる
-node watch-pr.mjs install    launchd に10分ごとの tick を登録する（macOS）。Linux では crontab の行を表示する
+node watch-pr.mjs install    launchd に1分ごとの tick を登録する（macOS）。Linux では crontab の行を表示する
 node watch-pr.mjs uninstall  launchd の登録を外す
 
 止める条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した、失敗が${maxFailures}回続いた
-見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから次の tick まで（push が続いていないかを見る）、同じPRの再レビューが実行中
+見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRの再レビューが実行中
+追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）
 `;
 
 function stateRoot() {
@@ -104,13 +108,13 @@ async function locked(path) {
 
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 
-async function record(values) {
+// Reads the watch for the PR of a runner output, and the state a new watch would start from.
+async function load(values) {
   if (!values.output) throw new Error('--outputが必要です。');
   const output = resolve(values.output);
   const manifest = JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
   const url = manifest.repository?.pr?.url;
   if (!url) throw new Error('--prで実行したレビューではありません。');
-  const diff = await readFile(join(output, 'reviewed.diff'), 'utf8');
   const file = statePath(url);
   const maxRereviews = Number(values['max-rereviews'] ?? 3);
   const ttlHours = Number(values['ttl-hours'] ?? 12);
@@ -123,7 +127,7 @@ async function record(values) {
   // While a re-review runs, a missing or stopped watch was removed or stopped meanwhile; its post must not bring it back.
   if (!previous && await locked(`${file}.lock`)) {
     console.log(JSON.stringify({ registered: false, state: file, reason: 'ウォッチは再レビュー中に解除または停止されたので、登録し直しません。' }, null, 2));
-    return;
+    return null;
   }
   // Re-reviews use the reviewers of the first review, so a reviewer the user left out stays out.
   const reviewers = (manifest.reviewers ?? []).map(r => `${r.cli}:${r.requestedModel}:${r.requestedEffort}`);
@@ -131,13 +135,33 @@ async function record(values) {
     pr: url, effort: values.effort ?? 'xhigh', reviewers,
     maxRereviews, registeredAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + ttlHours * 3600 * 1000).toISOString(),
-    rereviews: 0, failures: 0, stoppedReason: null,
+    rereviews: 0, failures: 0, supersededRuns: 0, stoppedReason: null,
   };
+  return { output, manifest, file, previous, state, now };
+}
+
+async function record(values) {
+  const loaded = await load(values);
+  if (!loaded) return;
+  const { output, manifest, file, previous, state, now } = loaded;
+  const diff = await readFile(join(output, 'reviewed.diff'), 'utf8');
   Object.assign(state, { lastReviewedCommit: manifest.repository.commit, lastReviewedDiffSha256: sha256(diff),
-    lastPostedAt: now.toISOString(), failures: 0 });
+    lastPostedAt: now.toISOString(), failures: 0, supersededRuns: 0 });
   await writeState(file, state);
   const schedule = await ensureInstalled();
   console.log(JSON.stringify({ registered: !previous, state: file, schedule, ...state }, null, 2));
+}
+
+// Registers a PR whose head kept moving during the first review, so nothing was posted.
+// With no reviewed commit, tick reviews the head once it settles and makes the first post.
+async function defer(values) {
+  const loaded = await load(values);
+  if (!loaded) return;
+  const { file, previous, state } = loaded;
+  if (!previous) Object.assign(state, { lastReviewedCommit: null, lastReviewedDiffSha256: null, lastPostedAt: null });
+  await writeState(file, state);
+  const schedule = await ensureInstalled();
+  console.log(JSON.stringify({ registered: !previous, deferred: true, state: file, schedule, ...state }, null, 2));
 }
 
 async function gh(args) {
@@ -163,11 +187,12 @@ async function decide(state, file, now = Date.now()) {
   const pr = await fetchPr(state.pr);
   if (pr.state !== 'OPEN') return { action: 'stop', reason: pr.state.toLowerCase() };
   if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
-  if (state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
+  // A deferred watch has not posted yet; its first post is not a re-review and does not use the allowance.
+  if (state.lastReviewedCommit != null && state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
   if (pr.isDraft) return { action: 'skip', reason: 'draft' };
   // Commit dates can be old or skewed after a rebase or cherry-pick, so the quiet time counts from when tick first saw the head.
   if (state.pendingHead !== pr.head) return { action: 'observe', reason: 'settling', head: pr.head };
-  if (now - Date.parse(state.pendingSince) < quietMs()) return { action: 'skip', reason: 'settling' };
+  if (now - Date.parse(state.pendingSince) < quietMs(state)) return { action: 'skip', reason: 'settling' };
   if (sha256(await gh(['pr', 'diff', state.pr])) === state.lastReviewedDiffSha256) {
     return { action: 'same-diff', head: pr.head };
   }
@@ -194,7 +219,8 @@ async function tick() {
       } else if (decision.action === 'observe') {
         await updateState(file, { pendingHead: decision.head, pendingSince: new Date().toISOString() });
       } else if (decision.action === 'same-diff') {
-        await updateState(file, { lastReviewedCommit: decision.head });
+        // The pushes settled without needing a review, so the next push waits only the base quiet time.
+        await updateState(file, { lastReviewedCommit: decision.head, supersededRuns: 0 });
       } else if (decision.action === 'review') {
         const child = spawn(process.execPath, [script, 'run', file], { detached: true, stdio: 'ignore' });
         child.unref();
@@ -205,15 +231,35 @@ async function tick() {
   }
 }
 
+// Hands a head that moved past the one being reviewed to the next tick, without counting a failure or a re-review.
+// Only a review that actually ran lengthens the quiet time.
+async function supersede(file, head, ranReview, refund = ranReview) {
+  const current = await readState(file).catch(() => null);
+  if (!current) return;
+  await writeState(file, { ...current, rereviews: current.rereviews - (refund ? 1 : 0),
+    supersededRuns: (current.supersededRuns ?? 0) + (ranReview ? 1 : 0), pendingHead: head, pendingSince: new Date().toISOString() });
+}
+
 // Runs one re-review for a watched PR. The lead records a successful post with `record`,
-// so a run that ends without moving lastPostedAt counts as a failure.
+// so a run that ends without moving lastPostedAt counts as a failure, unless the head moved meanwhile.
 async function run(file) {
   if (!await acquireLock(`${file}.lock`)) return;
   try {
-    const state = await readState(file);
-    const n = state.rereviews + 1;
+    const before = await readState(file);
+    // A push between tick and here would make the lead review a head that is not settled yet.
+    const startHead = await fetchPr(before.pr).then(pr => pr.head, () => before.pendingHead);
+    // remove may have deleted the watch while GitHub answered; leave it deleted.
+    const state = await readState(file).catch(() => null);
+    if (!state || state.stoppedReason) return;
+    if (startHead !== state.pendingHead) {
+      await supersede(file, startHead, false);
+      return;
+    }
+    // The first post of a deferred watch runs as re-review 0, which the lead does not count.
+    const initial = state.lastReviewedCommit == null;
+    const n = initial ? 0 : state.rereviews + 1;
     const startedAt = new Date().toISOString();
-    await writeState(file, { ...state, rereviews: n, lastAttemptAt: startedAt });
+    await writeState(file, { ...state, rereviews: initial ? state.rereviews : n, lastAttemptAt: startedAt });
     const logs = join(watchDir(), 'logs');
     await mkdir(logs, { recursive: true, mode: 0o700 });
     const log = await open(join(logs, `${startedAt.replace(/[:.]/g, '-')}-${parsePrUrl(state.pr).number}.log`), 'w', 0o600);
@@ -249,7 +295,14 @@ async function run(file) {
     const after = await readState(file).catch(() => null);
     if (after) {
       const posted = after.lastPostedAt && after.lastPostedAt >= startedAt;
-      await writeState(file, { ...after, lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
+      // The lead does not post on a head that moved past the reviewed one; that run is overtaken, not failed.
+      const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => null);
+      if (endHead && endHead !== startHead) {
+        await updateState(file, { lastExitCode: code });
+        await supersede(file, endHead, true, !initial);
+      } else {
+        await updateState(file, { lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
+      }
     }
   } finally {
     await rm(`${file}.lock`, { force: true });
@@ -302,7 +355,7 @@ ${env.map(([key, value]) => `    <key>${escapeXml(key)}</key><string>${escapeXml
 const shellQuote = text => `'${text.replace(/'/g, `'\\''`)}'`;
 const cronLine = () => {
   const env = scheduleEnv().map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
-  return `*/10 * * * * ${env} ${shellQuote(process.execPath)} ${shellQuote(script)} tick >> ${shellQuote(join(watchDir(), 'logs', 'tick.log'))} 2>&1`;
+  return `* * * * * ${env} ${shellQuote(process.execPath)} ${shellQuote(script)} tick >> ${shellQuote(join(watchDir(), 'logs', 'tick.log'))} 2>&1`;
 };
 
 async function install() {
@@ -343,13 +396,14 @@ async function main() {
   if (values.help || !command) { console.log(help); return; }
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからのウォッチ操作は禁止です。');
   if (command === 'record') return record(values);
+  if (command === 'defer') return defer(values);
   if (command === 'tick') return tick();
   if (command === 'run') return run(arg);
   if (command === 'list') return list();
   if (command === 'remove') return remove(arg);
   if (command === 'install') {
     const result = await install();
-    console.log(result.installed ? `10分ごとの tick を登録しました: ${result.plist}`
+    console.log(result.installed ? `1分ごとの tick を登録しました: ${result.plist}`
       : `launchd が無いので、crontab -e で次の行を足してください:\n${result.cron}`);
     return;
   }
