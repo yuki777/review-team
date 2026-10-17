@@ -218,7 +218,8 @@ async function tick() {
       } else if (decision.action === 'observe') {
         await updateState(file, { pendingHead: decision.head, pendingSince: new Date().toISOString() });
       } else if (decision.action === 'same-diff') {
-        await updateState(file, { lastReviewedCommit: decision.head });
+        // The pushes settled without needing a review, so the next push waits only the base quiet time.
+        await updateState(file, { lastReviewedCommit: decision.head, supersededRuns: 0 });
       } else if (decision.action === 'review') {
         const child = spawn(process.execPath, [script, 'run', file], { detached: true, stdio: 'ignore' });
         child.unref();
@@ -230,11 +231,12 @@ async function tick() {
 }
 
 // Hands a head that moved past the one being reviewed to the next tick, without counting a failure or a re-review.
-async function supersede(file, head, refund) {
+// Only a review that actually ran lengthens the quiet time.
+async function supersede(file, head, ranReview) {
   const current = await readState(file).catch(() => null);
   if (!current) return;
-  await writeState(file, { ...current, rereviews: current.rereviews - refund,
-    supersededRuns: (current.supersededRuns ?? 0) + 1, pendingHead: head, pendingSince: new Date().toISOString() });
+  await writeState(file, { ...current, rereviews: current.rereviews - (ranReview ? 1 : 0),
+    supersededRuns: (current.supersededRuns ?? 0) + (ranReview ? 1 : 0), pendingHead: head, pendingSince: new Date().toISOString() });
 }
 
 // Runs one re-review for a watched PR. The lead records a successful post with `record`,
@@ -242,11 +244,14 @@ async function supersede(file, head, refund) {
 async function run(file) {
   if (!await acquireLock(`${file}.lock`)) return;
   try {
-    const state = await readState(file);
+    const before = await readState(file);
     // A push between tick and here would make the lead review a head that is not settled yet.
-    const startHead = await fetchPr(state.pr).then(pr => pr.head, () => state.pendingHead);
+    const startHead = await fetchPr(before.pr).then(pr => pr.head, () => before.pendingHead);
+    // remove may have deleted the watch while GitHub answered; leave it deleted.
+    const state = await readState(file).catch(() => null);
+    if (!state || state.stoppedReason) return;
     if (startHead !== state.pendingHead) {
-      await supersede(file, startHead, 0);
+      await supersede(file, startHead, false);
       return;
     }
     const n = state.rereviews + 1;
@@ -291,7 +296,7 @@ async function run(file) {
       const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => null);
       if (endHead && endHead !== startHead) {
         await updateState(file, { lastExitCode: code });
-        await supersede(file, endHead, 1);
+        await supersede(file, endHead, true);
       } else {
         await updateState(file, { lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
       }

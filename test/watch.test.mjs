@@ -305,6 +305,19 @@ test('tickのあと再レビューを始める前にheadが進んでいれば、
   assert.equal(s.rereviews, 0);
   assert.equal(s.failures, 0);
   assert.equal(s.pendingHead, 'ccc');
+  // No review ran, so the quiet time stays at the base.
+  assert.equal(s.supersededRuns, 0);
+});
+
+test('追い越しのあと差分が同じpushで落ち着いたら、静穏時間を元に戻す', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(t.stateFile, JSON.stringify({ ...await t.state(), supersededRuns: 2 }));
+  await t.setPr({ headRefOid: 'bbb' });
+  assert.match(await t.tickAfterQuiet(), /same-diff/);
+  assert.equal((await t.state()).supersededRuns, 0);
 });
 
 test('deferはレビュー済みのcommitなしで登録し、tickが最初の投稿をする', async () => {
