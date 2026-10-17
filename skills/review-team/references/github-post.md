@@ -371,7 +371,7 @@ mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
 
 `plan.json` の `previous` が空なら何もしない。本書の5節で今回のレビューを確かめたあとにだけ行う。投稿が止まった試行（本書の1b・4節）では、返信も resolve もしない。`--rereview` で起動された場合も同じ手順で行う。
 
-始める前に、本書の1b の状態確認をもう一度行い、`viewer.login` が `plan.json` の `login` と同じことも確かめる。`headRefOid` が `plan.json` の `commit` と違えば、確かめたあとに push があり、直ったとした問題が戻っているかもしれないので、どの件も返信も resolve もせずに飛ばす。利用者に選んでもらうことはしない。投稿は確かめられているので、SKILL.md 5節の `record` は実行し、報告には「新しい push があったので次の回で確かめる」と飛ばした件を書く。飛ばしたスレッドは、次の回の本書の2節「前回のスレッド」が新しい head で判定する。`state` が `OPEN` でなくなっていれば、どの件も返信も resolve もせずに止め、利用者に伝える。
+始める前に、本書の1b の状態確認をもう一度行い、`viewer.login` が `plan.json` の `login` と同じことも確かめる。`headRefOid` が `plan.json` の `commit` と違えば、確かめたあとに push があり、直ったとした問題が戻っているかもしれないので、どの件も返信も resolve もせずに飛ばす。利用者に選んでもらうことはしない。投稿は確かめられているので、`--watch` か `--rereview` があれば SKILL.md 5節の `record` は実行する。報告には「新しい push があったので次の回で確かめる」と飛ばした件を書く。飛ばしたスレッドは、次の回の本書の2節「前回のスレッド」が新しい head で判定する。`state` が `OPEN` でなくなっていれば、どの件も返信も resolve もせずに止め、利用者に伝える。
 
 下の GraphQL は、本書の4節と同じく `$ATTEMPT/<名前>.graphql`（`add-reply`、`resolve-thread`、`fetch-thread`）に書き出して使う。`previous` の j 番目（1 から数える）を、一件ずつ順に処理する。要求と応答は `previous-<j>-fetch-<n>`（n は 1 から増やす）、`previous-<j>-reply`、`previous-<j>-resolve` の名前で置く。前の試行の続きで、`previous-<j>-resolve` が成功している件や、`action` が `reply` で `previous-<j>-reply` が成功している件は飛ばす。
 
@@ -438,10 +438,10 @@ mutation($thread: ID!) {
 それ以外では、次を繰り返す。自動の再レビューは1回の起動で2回までとする。
 
 1. head が5分変わらないのを待つ。1分ごとに本書の1b のクエリで `headRefOid` を取り、変わったら5分を数え直す。待つ間も応答を終えない。
-2. SKILL.md 2節と同じ runner を、同じレビュアー（manifest の `reviewers`）、同じ `--effort`、新しい出力先で起動し、落ち着いた head を `--pr` でレビューする。
+2. SKILL.md 2節と同じ runner を新しい出力先で起動し、落ち着いた head を `--pr` でレビューする。レビュアーは manifest の `reviewers` の各要素から `--reviewer <cli>:<requestedModel>:<requestedEffort>` を組み立てて渡す。runner に `--effort` は無い。
 3. SKILL.md 3・4節で判定する。前の回の Act On と Consider は、新しい head のコードで残っているかを確かめてから、前の回の指摘として引き継ぐ。直っていたものは引き継がず、総評の「確認した点」に書ける。
 4. 新しい出力先を `$OUTPUT` として本書の1節から投稿を進める。`--comment` で起動されていれば、本書の3節のとおり返事を待たずに投稿する。`--comment` が無ければ、プレビューの承認を通常どおり待つ。
 
-2回再レビューしてもまだ head が進んでいたら、投稿せずに終える。`--watch` があれば、SKILL.md 5節の `defer` でウォッチに引き継ぐ。無ければ、追い越されたことと、最後にレビューした commit とその判定を報告して終える。
+2回再レビューしてもまだ head が進んでいたら、投稿せずに終える。`--watch` と `--comment` の両方があれば、SKILL.md 5節の `defer` でウォッチに引き継ぐ。そうでなければ、追い越されたことと、最後にレビューした commit とその判定を報告して終える。
 
 完了条件: 落ち着いた head へのレビューを投稿したか、投稿せずにウォッチへ引き継いだか、追い越されたことを報告している。

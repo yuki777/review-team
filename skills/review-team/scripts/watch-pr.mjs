@@ -187,7 +187,8 @@ async function decide(state, file, now = Date.now()) {
   const pr = await fetchPr(state.pr);
   if (pr.state !== 'OPEN') return { action: 'stop', reason: pr.state.toLowerCase() };
   if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
-  if (state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
+  // A deferred watch has not posted yet; its first post is not a re-review and does not use the allowance.
+  if (state.lastReviewedCommit != null && state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
   if (pr.isDraft) return { action: 'skip', reason: 'draft' };
   // Commit dates can be old or skewed after a rebase or cherry-pick, so the quiet time counts from when tick first saw the head.
   if (state.pendingHead !== pr.head) return { action: 'observe', reason: 'settling', head: pr.head };
@@ -232,10 +233,10 @@ async function tick() {
 
 // Hands a head that moved past the one being reviewed to the next tick, without counting a failure or a re-review.
 // Only a review that actually ran lengthens the quiet time.
-async function supersede(file, head, ranReview) {
+async function supersede(file, head, ranReview, refund = ranReview) {
   const current = await readState(file).catch(() => null);
   if (!current) return;
-  await writeState(file, { ...current, rereviews: current.rereviews - (ranReview ? 1 : 0),
+  await writeState(file, { ...current, rereviews: current.rereviews - (refund ? 1 : 0),
     supersededRuns: (current.supersededRuns ?? 0) + (ranReview ? 1 : 0), pendingHead: head, pendingSince: new Date().toISOString() });
 }
 
@@ -254,9 +255,11 @@ async function run(file) {
       await supersede(file, startHead, false);
       return;
     }
-    const n = state.rereviews + 1;
+    // The first post of a deferred watch runs as re-review 0, which the lead does not count.
+    const initial = state.lastReviewedCommit == null;
+    const n = initial ? 0 : state.rereviews + 1;
     const startedAt = new Date().toISOString();
-    await writeState(file, { ...state, rereviews: n, lastAttemptAt: startedAt });
+    await writeState(file, { ...state, rereviews: initial ? state.rereviews : n, lastAttemptAt: startedAt });
     const logs = join(watchDir(), 'logs');
     await mkdir(logs, { recursive: true, mode: 0o700 });
     const log = await open(join(logs, `${startedAt.replace(/[:.]/g, '-')}-${parsePrUrl(state.pr).number}.log`), 'w', 0o600);
@@ -296,7 +299,7 @@ async function run(file) {
       const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => null);
       if (endHead && endHead !== startHead) {
         await updateState(file, { lastExitCode: code });
-        await supersede(file, endHead, true);
+        await supersede(file, endHead, true, !initial);
       } else {
         await updateState(file, { lastExitCode: code, failures: posted ? 0 : after.failures + 1 });
       }

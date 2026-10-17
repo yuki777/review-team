@@ -325,7 +325,7 @@ test('deferはレビュー済みのcommitなしで登録し、tickが最初の�
   await writeFile(t.diff, 'diff-0\n');
   const out = await mkdtemp(join(t.dir, 'deferred-'));
   await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } } }));
-  const result = JSON.parse((await t.cli('defer', '--output', out, '--effort', 'high')).stdout);
+  const result = JSON.parse((await t.cli('defer', '--output', out, '--effort', 'high', '--max-rereviews', '0')).stdout);
   assert.equal(result.registered, true);
   assert.equal(result.deferred, true);
   assert.equal((await t.state()).lastReviewedCommit, null);
@@ -333,6 +333,7 @@ test('deferはレビュー済みのcommitなしで登録し、tickが最初の�
   assert.match(await t.tickAfterQuiet(), /: review$/m);
   const s = await t.state();
   assert.equal(s.lastReviewedCommit, 'ccc');
-  assert.equal(s.rereviews, 1);
-  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort high .* --rereview 1\/3 /);
+  // The first post does not use the re-review allowance, even when it is 0.
+  assert.equal(s.rereviews, 0);
+  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort high .* --rereview 0\/0 /);
 });
