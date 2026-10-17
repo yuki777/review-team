@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.15](https://github.com/yuki777/review-team/compare/v0.1.14...v0.1.15) - 2026-10-17
+
+- feat(review-team): head が進んでも止まらずに新しい head の再レビューへつなぐ by @yuki777 in https://github.com/yuki777/review-team/pull/58
+
 ## [v0.1.14](https://github.com/yuki777/review-team/compare/v0.1.13...v0.1.14) - 2026-10-16
 
 - docs(review-team): 再レビューで直ったと確かめた前回の指摘のスレッドを resolve する by @yuki777 in https://github.com/yuki777/review-team/pull/55
