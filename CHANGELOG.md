@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.23](https://github.com/yuki777/review-team/compare/v0.1.22...v0.1.23) - 2026-10-19
+
+- review-team コマンドで版を表示する（USAGE と --version） by @yuki777 in https://github.com/yuki777/review-team/pull/83
+
 ## [v0.1.22](https://github.com/yuki777/review-team/compare/v0.1.21...v0.1.22) - 2026-10-19
 
 - ウォッチの期限の既定を6時間にし、自動再レビューで外の状態を待たない決まりを足す by @yuki777 in https://github.com/yuki777/review-team/pull/80
