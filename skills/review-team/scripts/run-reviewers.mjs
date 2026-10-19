@@ -120,7 +120,7 @@ function stateRoot() {
 
 async function resolvePullRequest(spec) {
   progress(`PRを取得しています: ${spec}`);
-  const view = await execFileAsync('gh', ['pr', 'view', spec, '--json', 'number,url,title,body,baseRefName'])
+  const view = await execFileAsync('gh', ['pr', 'view', spec, '--json', 'number,url,title,body,baseRefName,headRefOid'])
     .catch(error => { throw new Error(`PRを取得できません: ${spec}（${error.stderr?.trim() || error.message}）`); });
   const pr = JSON.parse(view.stdout);
   const [, host, owner, name] = pr.url.match(/^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+$/) ?? [];
@@ -145,23 +145,34 @@ async function resolvePullRequest(spec) {
   const git = (...args) => execFileAsync('git', ['-C', cache, ...args]).then(result => result.stdout.trim());
   const headRef = `refs/review-team/pull/${pr.number}`;
   progress(`PRのコミットを取得しています: ${pr.url}`);
-  const fetchHead = () => git('fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${pr.number}/head:${headRef}`);
   // Runs for other PRs of the same repository fetch into this cache too and can collide on its locks,
   // so retry a few times with growing, jittered waits that keep simultaneous runs from colliding again.
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await fetchHead();
-      break;
-    } catch (error) {
-      if (attempt === 4) throw new Error(`PRのコミットを取得できません（${error.stderr?.trim() || error.message}）`);
-      await new Promise(done => setTimeout(done, (2 ** attempt + Math.random() * 2 ** attempt) * 1000));
+  const fetchRef = async refspec => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await git('fetch', '--quiet', '--no-tags', 'origin', refspec);
+      } catch (error) {
+        if (attempt === 4) throw new Error(`PRのコミットを取得できません（${error.stderr?.trim() || error.message}）`);
+        await new Promise(done => setTimeout(done, (2 ** attempt + Math.random() * 2 ** attempt) * 1000));
+      }
     }
+  };
+  await fetchRef(`+refs/pull/${pr.number}/head:${headRef}`);
+  let commit = await git('rev-parse', '--verify', `${headRef}^{commit}`);
+  // GitHub can update refs/pull/N/head long after a push, so the fetched commit may not be the PR head the diff is from.
+  if (commit !== pr.headRefOid) {
+    progress(`refs/pull/${pr.number}/head（${commit}）がPRのhead（${pr.headRefOid}）と一致しないため、headのコミットを直接取得します`);
+    await fetchRef(`+${pr.headRefOid}:${headRef}`);
+    commit = pr.headRefOid;
   }
-  const commit = await git('rev-parse', '--verify', `${headRef}^{commit}`);
   progress('PRの差分を取得しています');
   // gh pr diff compares against the base at PR time, so merged PRs still yield their own changes.
   const diff = (await execFileAsync('gh', ['pr', 'diff', pr.url], { maxBuffer: 64 * 1024 * 1024 })
     .catch(error => { throw new Error(`PRの差分を取得できません（${error.stderr?.trim() || error.message}）`); })).stdout;
+  // A push between the fetch and gh pr diff would pair the new diff with the old code again.
+  const { headRefOid } = JSON.parse((await execFileAsync('gh', ['pr', 'view', pr.url, '--json', 'headRefOid'])
+    .catch(error => { throw new Error(`PRのheadを確認できません（${error.stderr?.trim() || error.message}）`); })).stdout);
+  if (headRefOid !== commit) throw new Error(`PRの取得中にheadが変わりました（${commit} → ${headRefOid}）。起動し直してください。`);
   return { path: cache, ref: `pull/${pr.number}/head`, commit,
     pr: { url: pr.url, number: pr.number, title: pr.title, body: pr.body, base: pr.baseRefName, diff } };
 }

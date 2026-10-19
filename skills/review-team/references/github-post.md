@@ -71,7 +71,7 @@ query($url: URI!) {
 
 - `state` が `OPEN` でない。
 - `headRefOid` が manifest の `repository.commit` と違う。レビュー後に push があったので、利用者に選んでもらわずに本書の7節へ進む。
-- `gh pr diff "$PR_URL"` の出力が `$OUTPUT/reviewed.diff` とバイト単位で一致しない。base の付け替え、packet で渡した独自の差分、runner の取得中の push のどれでも、行位置がレビューした差分と対応しなくなる。シェルのフックが出力を加工する環境では、フックを通さない生の出力で比べる。
+- `gh pr diff "$PR_URL"` の出力が `$OUTPUT/reviewed.diff` とバイト単位で一致しない。base の付け替えや、packet で渡した独自の差分では、行位置がレビューした差分と対応しなくなる。シェルのフックが出力を加工する環境では、フックを通さない生の出力で比べる。
 - 最後の試行のレビュー ID ではない pending review がある。GitHub は同じ利用者の pending review を PR ごとに一つしか持てない。手動の下書きかもしれないので、再利用・提出・削除をしない。
 
 PR の `id` と `viewer.login` を控える。
