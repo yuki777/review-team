@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -246,8 +245,8 @@ async function supersede(file, head, ranReview, refund = ranReview) {
 // so a run that ends without moving lastPostedAt counts as a failure, unless the head moved meanwhile.
 async function run(file) {
   if (!await acquireLock(`${file}.lock`)) return;
-  // The lead creates this file right before it starts a review on GitHub. A run stopped after that
-  // would leave a draft that blocks the next post, so a moved head no longer stops it.
+  // Whoever creates this file first decides: the lead before it starts a review on GitHub, or run()
+  // before it stops the lead. A run stopped while posting would leave a draft that blocks the next post.
   const posting = `${file}.posting`;
   try {
     const before = await readState(file);
@@ -297,8 +296,9 @@ async function run(file) {
         poll = setTimeout(async () => {
           const head = await fetchPr(state.pr).then(pr => pr.head, () => null);
           if (exited || stopping) return;
-          if (head && head !== startHead && !existsSync(posting)) stop();
-          else watchHead();
+          if (!head || head === startHead) return watchHead();
+          const claimed = await writeFile(posting, 'watch\n', { flag: 'wx' }).then(() => true, () => false);
+          if (claimed && !exited) stop();
         }, headPollMs());
       };
       watchHead();

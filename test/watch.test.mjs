@@ -32,7 +32,7 @@ for last; do :; done
 echo "$*" >> "${leadLog}"
 [ -f "${join(dir, 'lead-fails')}" ] && exit 1
 # The lead marks that it started posting, as github-post.md section 4 tells it to.
-[ -f "${join(dir, 'lead-posts')}" ] && touch "$REVIEW_TEAM_WATCH_POSTING"
+[ -f "${join(dir, 'lead-posts')}" ] && { ( set -C; echo lead > "$REVIEW_TEAM_WATCH_POSTING" ) 2>/dev/null || grep -qx lead "$REVIEW_TEAM_WATCH_POSTING"; }
 # A push during the review: the lead moves the head and stops without posting.
 [ -f "${join(dir, 'lead-pushes')}" ] && printf '{"data":{"resource":{"state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$(cat "${join(dir, 'lead-pushes')}")" > "${pr}"
 # lead-hangs holds how many seconds the lead takes; empty means it hangs.
