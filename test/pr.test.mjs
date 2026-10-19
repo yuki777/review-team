@@ -21,16 +21,19 @@ async function setup({ cloneDelay = 0 } = {}) {
   git('commit', '-qam', 'change');
   const head = git('rev-parse', 'HEAD');
   git('push', '-q', remote, `HEAD:refs/pull/7/head`);
+  const headFile = join(dir, 'head');
+  await writeFile(headFile, head);
 
   const bin = join(dir, 'bin');
   await mkdir(bin);
   const ghLog = join(dir, 'gh.log');
   await writeFile(join(bin, 'gh'), `#!/bin/sh
 echo "$*" >> "${ghLog}"
-case "$1 $2" in
-  "pr view") echo '{"number":7,"url":"https://example.test/acme/widget/pull/7","title":"PRのタイトル","body":"PRの本文","baseRefName":"main"}' ;;
-  "pr diff") printf 'diff --git a/lib.js b/lib.js\\n-base\\n+pr-head\\n' ;;
-  "repo clone") sleep ${cloneDelay}; git clone -q --no-checkout "${remote}" "$4" ;;
+case "$*" in
+  "pr view 7 "*) echo '{"number":7,"url":"https://example.test/acme/widget/pull/7","title":"PRのタイトル","body":"PRの本文","baseRefName":"main","headRefOid":"'"$(cat "${headFile}")"'"}' ;;
+  "pr view https:"*) echo '{"headRefOid":"'"$(cat "${headFile}2" 2>/dev/null || cat "${headFile}")"'"}' ;;
+  "pr diff "*) printf 'diff --git a/lib.js b/lib.js\\n-base\\n+pr-head\\n' ;;
+  "repo clone "*) sleep ${cloneDelay}; git clone -q --no-checkout "${remote}" "$4" ;;
   *) exit 1 ;;
 esac
 `);
@@ -57,7 +60,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   };
   const run = async (...args) => (await runWithLog(...args)).code;
   const cache = join(state, 'review-team', 'repos', 'example.test', 'acme', 'widget');
-  return { dir, head, ghLog, report, cache, run, runWithLog };
+  return { dir, head, headFile, git, remote, ghLog, report, cache, run, runWithLog };
 }
 
 test('--prはリポジトリをキャッシュにクローンし、PRのheadを読ませ、資料をPRから補う', async () => {
@@ -108,5 +111,39 @@ test('--prを同じリポジトリで並行して初回起動しても、両方�
   const { dir, cache, run } = await setup({ cloneDelay: 1 });
   assert.deepEqual(await Promise.all([run('out1'), run('out2')]), [0, 0]);
   assert.deepEqual((await readdir(dirname(cache))).filter(name => name !== 'widget'), [], 'クローン途中の一時ディレクトリが残っています');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--prはrefs/pull/N/headがPRのheadより古ければ、headのコミットを直接取ってレビュアーに読ませる', async () => {
+  const { dir, headFile, git, remote, report, run, runWithLog } = await setup();
+  assert.equal(await run('out1'), 0);
+  // The cache already exists, so the new commit can only reach it through the fetch, not through the initial clone.
+  await writeFile(join(dir, 'work', 'lib.js'), 'pushed\n');
+  git('commit', '-qam', 'push');
+  const pushed = git('rev-parse', 'HEAD');
+  git('push', '-q', remote, 'HEAD:refs/heads/feature');
+  await writeFile(headFile, pushed);
+  const { code, stderr } = await runWithLog('out2');
+  assert.equal(code, 0, stderr);
+  assert.match(stderr, /headのコミットを直接取得します/);
+  assert.equal(await readFile(report, 'utf8'), 'pushed\n');
+  const manifest = JSON.parse(await readFile(join(dir, 'out2', 'manifest.json'), 'utf8'));
+  assert.equal(manifest.repository.commit, pushed);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--prはPRのheadのコミットを取れなければ、レビュアーを起動せずに終了コード2で終わる', async () => {
+  const { dir, headFile, run } = await setup();
+  await writeFile(headFile, '0123456789abcdef0123456789abcdef01234567');
+  assert.equal(await run('out1'), 2);
+  assert.deepEqual((await readdir(dir)).filter(name => name === 'out1' || name === 'report'), []);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--prは差分の取得までにPRのheadが変わったら、レビュアーを起動せずに終了コード2で終わる', async () => {
+  const { dir, headFile, run } = await setup();
+  await writeFile(`${headFile}2`, '0123456789abcdef0123456789abcdef01234567');
+  assert.equal(await run('out1'), 2);
+  assert.deepEqual((await readdir(dir)).filter(name => name === 'out1' || name === 'report'), []);
   await rm(dir, { recursive: true, force: true });
 });
