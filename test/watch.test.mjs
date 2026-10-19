@@ -18,7 +18,10 @@ async function setup(extraEnv = {}) {
   const diff = join(dir, 'pr.diff');
   const leadLog = join(dir, 'lead.log');
   // gh answers from files the test rewrites, so each tick sees the PR as the test sets it.
+  // With gh-fails-after-stop, GitHub stops answering once run() has decided to stop the lead.
+  const posting = join(dir, 'state', 'review-team', 'watch', 'prs', 'example.test', 'acme', 'widget', '7.json.posting');
   await writeFile(join(bin, 'gh'), `#!/bin/sh
+[ -f "${join(dir, 'gh-fails-after-stop')}" ] && grep -qx watch "${posting}" 2>/dev/null && exit 1
 case "$1 $2" in
   "api graphql") cat "${pr}" ;;
   "pr diff") cat "${diff}" ;;
@@ -294,6 +297,24 @@ test('再レビュー中にheadが進めば、投稿を始める前ならリー�
   assert.equal(s.failures, 0);
   assert.equal(s.rereviews, 0);
   assert.equal(s.supersededRuns, 1);
+  assert.equal(s.pendingHead, 'ccc');
+});
+
+test('headが進んで止めたあとGitHubに届かなくても、追い越しとして数える', async () => {
+  const t = await setup({ REVIEW_TEAM_LEAD_TIMEOUT: '30', REVIEW_TEAM_HEAD_POLL: '0.2' });
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-pushes'), 'ccc');
+  await writeFile(join(t.dir, 'lead-hangs'), '');
+  await writeFile(t.diff, 'diff-1\n');
+  await writeFile(join(t.dir, 'gh-fails-after-stop'), '');
+  await t.setPr({ headRefOid: 'bbb' });
+  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  const s = await t.state();
+  assert.equal(s.lastExitCode, 'SIGTERM');
+  assert.equal(s.failures, 0);
+  assert.equal(s.rereviews, 0);
   assert.equal(s.pendingHead, 'ccc');
 });
 

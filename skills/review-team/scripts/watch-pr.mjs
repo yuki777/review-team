@@ -273,6 +273,7 @@ async function run(file) {
     const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
     await rm(posting, { force: true });
+    let movedTo = null;
     const code = await new Promise(done => {
       // The lead runs in its own process group so a hung run can be stopped with its reviewers,
       // which releases the lock and counts the attempt as a failure.
@@ -298,7 +299,7 @@ async function run(file) {
           if (exited || stopping) return;
           if (!head || head === startHead) return watchHead();
           const claimed = await writeFile(posting, 'watch\n', { flag: 'wx' }).then(() => true, () => false);
-          if (claimed && !exited) stop();
+          if (claimed && !exited) { movedTo = head; stop(); }
         }, headPollMs());
       };
       watchHead();
@@ -322,8 +323,9 @@ async function run(file) {
     if (after) {
       const posted = after.lastPostedAt && after.lastPostedAt >= startedAt;
       // The lead does not post on a head that moved past the reviewed one; that run is overtaken, not failed.
-      const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => null);
-      if (endHead && endHead !== startHead) {
+      // A run stopped for a moved head stays overtaken even if GitHub cannot be asked again.
+      const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => movedTo);
+      if (endHead && (endHead !== startHead || movedTo)) {
         await updateState(file, { lastExitCode: code });
         await supersede(file, endHead, true, !initial);
       } else {
