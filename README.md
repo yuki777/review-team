@@ -165,8 +165,8 @@ ln -s ~/.agents/skills/review-team/scripts/review-team ~/bin/review-team
 
 ```sh
 review-team <PR-URL>                  # 既定のレビュアー
-review-team opus-sol <PR-URL>         # チームを指定
-review-team --team sol-opus <PR-URL>  # --team でも指定できる
+review-team --team opus-sol <PR-URL>  # チームを指定
+review-team --team sol-opus <PR-URL>  # メンバーは順不同
 ```
 
 チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になり、effort はすべて high です。
