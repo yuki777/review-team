@@ -1,16 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const wrapper = new URL('../skills/review-team/scripts/review-team', import.meta.url).pathname;
 const reviewersJson = new URL('../skills/review-team/config/reviewers.json', import.meta.url).pathname;
+const skillDir = new URL('../skills/review-team', import.meta.url).pathname;
+const versionFile = new URL('../skills/review-team/VERSION', import.meta.url).pathname;
 const prUrl = 'https://example.test/acme/widget/pull/7';
 
 // The fake claude records its working directory and arguments, one argument per line.
-async function run(args) {
+// command を渡すと、bash を通さずにそのパス（シンボリックリンクなど）を直接実行する。
+async function run(args, command) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-wrapper-'));
   const bin = join(dir, 'bin');
   await mkdir(bin);
@@ -20,13 +23,15 @@ pwd > "${log}"
 for arg; do echo "$arg" >> "${log}"; done
 `);
   await chmod(join(bin, 'claude'), 0o755);
-  const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', 'ignore', 'pipe'],
+  const child = spawn(command ?? 'bash', command ? args : [wrapper, ...args], { stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') } });
+  let stdout = '';
   let stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
   child.stderr.on('data', chunk => { stderr += chunk; });
   const code = await new Promise(resolve => child.on('exit', resolve));
   const lines = await readFile(log, 'utf8').then(text => text.trimEnd().split('\n'), () => null);
-  return { dir, code, stderr, cwd: lines?.[0], argv: lines ? lines.slice(1) : null };
+  return { dir, code, stdout, stderr, cwd: lines?.[0], argv: lines ? lines.slice(1) : null };
 }
 
 const prompt = reviewers => `/review-team --comment --watch${reviewers.map(r => ` --reviewer ${r}`).join('')} ${prUrl}`;
@@ -78,4 +83,23 @@ test('--helpは使い方を出して終了コード0で終わる', async () => {
   assert.equal(code, 0);
   assert.match(stderr, /usage: review-team/);
   assert.equal(argv, null);
+});
+
+test('--versionはVERSIONの版を標準出力に出して終了コード0で終わり、使い方にも版が出る', async () => {
+  const expected = `review-team v${(await readFile(versionFile, 'utf8')).trim()}`;
+  const version = await run(['--version']);
+  assert.equal(version.code, 0);
+  assert.equal(version.stdout, `${expected}\n`);
+  assert.equal(version.argv, null);
+  const help = await run(['--help']);
+  assert.equal(help.stderr.split('\n')[0], expected);
+});
+
+test('シンボリックリンク経由で実行しても、実体の隣のVERSIONを読む', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-link-'));
+  await symlink(skillDir, join(dir, 'skill'));
+  await symlink(join(dir, 'skill', 'scripts', 'review-team'), join(dir, 'review-team'));
+  const { code, stdout } = await run(['--version'], join(dir, 'review-team'));
+  assert.equal(code, 0);
+  assert.equal(stdout, `review-team v${(await readFile(versionFile, 'utf8')).trim()}\n`);
 });
