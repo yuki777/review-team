@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.19](https://github.com/yuki777/review-team/compare/v0.1.18...v0.1.19) - 2026-10-19
+
+- PR に投稿する指摘に、検出したモデルを HTML コメントで残す by @yuki777 in https://github.com/yuki777/review-team/pull/70
+
 ## [v0.1.18](https://github.com/yuki777/review-team/compare/v0.1.17...v0.1.18) - 2026-10-19
 
 - レビュアーの一部が失敗しても、2人以上成功すれば確かめずに判定へ進む by @yuki777 in https://github.com/yuki777/review-team/pull/67
