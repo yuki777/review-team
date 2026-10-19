@@ -14,6 +14,7 @@ const script = fileURLToPath(import.meta.url);
 const quietMs = (state = {}) => Number(process.env.REVIEW_TEAM_QUIET ?? 300) * 1000 * 2 ** Math.min(state.supersededRuns ?? 0, 2);
 const intervalSeconds = 60;
 const leadTimeoutMs = () => Number(process.env.REVIEW_TEAM_LEAD_TIMEOUT || 5400) * 1000;
+const headPollMs = () => Number(process.env.REVIEW_TEAM_HEAD_POLL || 60) * 1000;
 const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
 const help = `review-team watch: 投稿したPRに新しいpushがあれば、定期的に再レビューして投稿します。
@@ -31,7 +32,7 @@ node watch-pr.mjs uninstall  launchd の登録を外す
 
 止める条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した、失敗が${maxFailures}回続いた
 見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRの再レビューが実行中
-追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）
+追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
 `;
 
 function stateRoot() {
@@ -244,6 +245,9 @@ async function supersede(file, head, ranReview, refund = ranReview) {
 // so a run that ends without moving lastPostedAt counts as a failure, unless the head moved meanwhile.
 async function run(file) {
   if (!await acquireLock(`${file}.lock`)) return;
+  // Whoever creates this file first decides: the lead before it starts a review on GitHub, or run()
+  // before it stops the lead. A run stopped while posting would leave a draft that blocks the next post.
+  const posting = `${file}.posting`;
   try {
     const before = await readState(file);
     // A push between tick and here would make the lead review a head that is not settled yet.
@@ -268,26 +272,49 @@ async function run(file) {
     const reviewerArgs = reviewers.map(spec => `--reviewer ${spec} `).join('');
     const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
+    await rm(posting, { force: true });
+    let movedTo = null;
     const code = await new Promise(done => {
       // The lead runs in its own process group so a hung run can be stopped with its reviewers,
       // which releases the lock and counts the attempt as a failure.
       const child = spawn(lead, ['-p', '--effort', state.effort, '--permission-mode', 'auto', prompt],
-        { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd], detached: true });
+        { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd], detached: true,
+          env: { ...process.env, REVIEW_TEAM_WATCH_POSTING: posting } });
       const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
-      let timedOut = false;
+      let stopping = false;
+      let exited = false;
       let force;
-      const timer = setTimeout(() => {
-        timedOut = true;
+      let poll;
+      const stop = () => {
+        if (stopping) return;
+        stopping = true;
         kill('SIGTERM');
         force = setTimeout(() => kill('SIGKILL'), 30000);
-      }, leadTimeoutMs());
-      child.on('error', () => { clearTimeout(timer); done(-1); });
-      child.on('exit', (exitCode, signal) => {
+      };
+      const timer = setTimeout(stop, leadTimeoutMs());
+      // A push during the review makes its post useless, so the lead is stopped as soon as the head moves.
+      const watchHead = () => {
+        poll = setTimeout(async () => {
+          const head = await fetchPr(state.pr).then(pr => pr.head, () => null);
+          if (exited || stopping) return;
+          if (!head || head === startHead) return watchHead();
+          const claimed = await writeFile(posting, 'watch\n', { flag: 'wx' }).then(() => true, () => false);
+          if (claimed && !exited) { movedTo = head; stop(); }
+        }, headPollMs());
+      };
+      watchHead();
+      const finish = result => {
+        exited = true;
         clearTimeout(timer);
+        clearTimeout(poll);
         clearTimeout(force);
+        done(result);
+      };
+      child.on('error', () => finish(-1));
+      child.on('exit', (exitCode, signal) => {
         // Reviewers that ignored SIGTERM may outlive the lead; kill the group before the lock is released.
-        if (timedOut) kill('SIGKILL');
-        done(exitCode ?? signal);
+        if (stopping) kill('SIGKILL');
+        finish(exitCode ?? signal);
       });
     });
     await log.close();
@@ -296,8 +323,9 @@ async function run(file) {
     if (after) {
       const posted = after.lastPostedAt && after.lastPostedAt >= startedAt;
       // The lead does not post on a head that moved past the reviewed one; that run is overtaken, not failed.
-      const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => null);
-      if (endHead && endHead !== startHead) {
+      // A run stopped for a moved head stays overtaken even if GitHub cannot be asked again.
+      const endHead = posted ? null : await fetchPr(state.pr).then(pr => pr.head, () => movedTo);
+      if (endHead && (endHead !== startHead || movedTo)) {
         await updateState(file, { lastExitCode: code });
         await supersede(file, endHead, true, !initial);
       } else {
@@ -305,6 +333,7 @@ async function run(file) {
       }
     }
   } finally {
+    await rm(posting, { force: true });
     await rm(`${file}.lock`, { force: true });
   }
 }
@@ -328,7 +357,7 @@ const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').repl
 
 // launchd and cron start jobs with a minimal environment, so the current PATH, state directory and CLI overrides are copied in.
 const scheduleEnv = () => Object.entries(process.env)
-  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && key !== 'REVIEW_TEAM_DEPTH'));
+  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && key !== 'REVIEW_TEAM_DEPTH' && key !== 'REVIEW_TEAM_WATCH_POSTING'));
 
 function plist() {
   const env = scheduleEnv();
