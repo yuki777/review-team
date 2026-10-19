@@ -31,12 +31,13 @@ esac
 for last; do :; done
 echo "$*" >> "${leadLog}"
 [ -f "${join(dir, 'lead-fails')}" ] && exit 1
-[ -f "${join(dir, 'lead-hangs')}" ] && sleep 60
+# The lead marks that it started posting, as github-post.md section 4 tells it to.
+[ -f "${join(dir, 'lead-posts')}" ] && touch "$REVIEW_TEAM_WATCH_POSTING"
 # A push during the review: the lead moves the head and stops without posting.
-if [ -f "${join(dir, 'lead-pushes')}" ]; then
-  printf '{"data":{"resource":{"state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$(cat "${join(dir, 'lead-pushes')}")" > "${pr}"
-  exit 0
-fi
+[ -f "${join(dir, 'lead-pushes')}" ] && printf '{"data":{"resource":{"state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$(cat "${join(dir, 'lead-pushes')}")" > "${pr}"
+# lead-hangs holds how many seconds the lead takes; empty means it hangs.
+[ -f "${join(dir, 'lead-hangs')}" ] && { s=$(cat "${join(dir, 'lead-hangs')}"); sleep "\${s:-60}"; }
+[ -f "${join(dir, 'lead-pushes')}" ] && exit 0
 [ -f "${join(dir, 'lead-removes')}" ] && "${process.execPath}" "${watcher}" remove "${prUrl}" > /dev/null
 out="${dir}/out-$$"
 mkdir "$out"
@@ -274,6 +275,60 @@ test('再レビュー中にheadが進んだ回は失敗にも回数にも数え�
   assert.equal(s.rereviews, 1);
   assert.equal(s.supersededRuns, 0);
   assert.match(await readFile(t.leadLog, 'utf8'), / --rereview 1\/5 .*\n.* --rereview 1\/5 /);
+});
+
+test('再レビュー中にheadが進めば、投稿を始める前ならリードを止めて追い越しとして数える', async () => {
+  const t = await setup({ REVIEW_TEAM_LEAD_TIMEOUT: '30', REVIEW_TEAM_HEAD_POLL: '0.2' });
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-pushes'), 'ccc');
+  await writeFile(join(t.dir, 'lead-hangs'), '');
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'bbb' });
+  const started = Date.now();
+  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  assert.ok(Date.now() - started < 10000);
+  const s = await t.state();
+  assert.equal(s.lastExitCode, 'SIGTERM');
+  assert.equal(s.failures, 0);
+  assert.equal(s.rereviews, 0);
+  assert.equal(s.supersededRuns, 1);
+  assert.equal(s.pendingHead, 'ccc');
+});
+
+test('投稿を始めたリードは、headが進んでも止めない', async () => {
+  const t = await setup({ REVIEW_TEAM_LEAD_TIMEOUT: '30', REVIEW_TEAM_HEAD_POLL: '0.2' });
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-posts'), '');
+  await writeFile(join(t.dir, 'lead-pushes'), 'ccc');
+  await writeFile(join(t.dir, 'lead-hangs'), '1');
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'bbb' });
+  await t.tickAfterQuiet();
+  const s = await t.state();
+  assert.equal(s.lastExitCode, 0);
+  // The lead found the push itself and did not post, so the run is still overtaken, not failed.
+  assert.equal(s.failures, 0);
+  assert.equal(s.supersededRuns, 1);
+  assert.equal(await stat(`${t.stateFile}.posting`).catch(() => null), null);
+});
+
+test('headが進まなければ、再レビュー中に見張ってもリードを止めない', async () => {
+  const t = await setup({ REVIEW_TEAM_LEAD_TIMEOUT: '30', REVIEW_TEAM_HEAD_POLL: '0.2' });
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-0\n');
+  await t.register('aaa');
+  await writeFile(join(t.dir, 'lead-hangs'), '1');
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'bbb' });
+  await t.tickAfterQuiet();
+  const s = await t.state();
+  assert.equal(s.lastExitCode, 0);
+  assert.equal(s.lastReviewedCommit, 'bbb');
+  assert.equal(s.rereviews, 1);
 });
 
 test('追い越しが続くと静穏時間を延ばし、4倍で止める', async () => {

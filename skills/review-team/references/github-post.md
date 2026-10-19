@@ -292,6 +292,8 @@ gh api graphql --hostname "$GH_HOST" --input "$ATTEMPT/thread-$i.json" > "$ATTEM
 
 成功は終了コードだけで判断しない。応答を冒頭の規則で読み、成功でなければ次へ進まない。要求は一件ずつ順に送り、並列に送らない。
 
+環境変数 `REVIEW_TEAM_WATCH_POSTING` が空でなければ（`watch-pr.mjs` の再レビュー）、この節で最初の更新要求（`create`、または本書の1a から続ける試行では最初に送る `thread-<i>` か `submit`）を送る直前に `touch "$REVIEW_TEAM_WATCH_POSTING"` を実行する。`watch-pr.mjs` は再レビュー中に head が進むとリードを止めるが、このファイルがあれば止めない。止めると下書きが残り、次の投稿が本書の1b で止まるからである。以後の head の前進は、本書の1b の確認で見つけて、「止めるとき」に従って自分の下書きを消す。変数が空なら何もしない。
+
 まず event を付けずに pending review を作る（`create`）。`commitOID` は `plan.json` の `commit` にする。返った `state` が `PENDING` であることを確かめる。
 
 ```graphql
