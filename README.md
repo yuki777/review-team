@@ -155,6 +155,38 @@ work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_r
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --comment <PR-URL>"
 ```
 
+### コマンドで起動する（`review-team`）
+
+同梱の `scripts/review-team` は、上のワンライナーに `--comment --watch` を付けて起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+
+```sh
+mkdir -p ~/.local/bin
+ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
+```
+
+`~/.local/bin` が PATH に入っていなければ、シェルの設定ファイル（`~/.zshrc` など）に `export PATH="$HOME/.local/bin:$PATH"` を足します。
+
+```sh
+review-team <PR-URL>                  # 既定のレビュアー
+review-team --team opus-sol <PR-URL>  # チームを指定
+review-team --team sol-opus <PR-URL>  # メンバーは順不同
+```
+
+チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になり、effort はすべて high です。
+
+| メンバー | レビュアー |
+| --- | --- |
+| `opus` | `claude:claude-opus-5-5` |
+| `fable` | `claude:claude-fable-5-1` |
+| `sol` | `codex:gpt-6.1-sol` |
+| `astra` | `codex:gpt-6-astra` |
+| `grok` | `grok:grok-4.7-build-fast` |
+| `argon` | `agy:gemini-4-argon-high` |
+
+たとえば `opus-sol-grok-argon` は既定と同じ4人、`fable-astra` は Claude Fable 5.1 と Codex GPT 6 Astra の2人です。一覧は `review-team --help` で出ます。
+
+`--comment` と `--watch` が付くので、レビュー結果はプレビューの承認を待たずに PR に投稿され、以後の push も自動で再レビューされます。
+
 ## リリース
 
 [tagpr](https://github.com/Songmu/tagpr) が、main へのマージのたびにリリース用の PR を作り直します。その PR をマージすると、`skills/review-team/VERSION` の版でタグと GitHub Release が作られます。版は既定で patch が上がり、PR に `tagpr:minor` か `tagpr:major` のラベルを付けると上げ幅が変わります。VERSION を手で書き換える必要はありません。tagpr が PR を作れるよう、リポジトリの Settings > Actions > General > Workflow permissions で「Allow GitHub Actions to create and approve pull requests」を有効にしておきます。

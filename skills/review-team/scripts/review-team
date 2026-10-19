@@ -1,0 +1,105 @@
+#!/bin/bash
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: review-team [--team <TEAM>] <PR-URL>
+
+TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
+
+Members:
+  opus   claude:claude-opus-5-5
+  fable  claude:claude-fable-5-1
+  sol    codex:gpt-6.1-sol
+  astra  codex:gpt-6-astra
+  grok   grok:grok-4.7-build-fast
+  argon  agy:gemini-4-argon-high
+
+Teams (例):
+  opus-sol             Claude Opus 5.5 + Codex GPT 6.1 Sol
+  opus-sol-grok        opus-sol + Grok
+  opus-sol-argon       opus-sol + Gemini (agy)
+  opus-sol-grok-argon  既定と同じ4人
+  fable-astra          Claude Fable 5.1 + Codex GPT 6 Astra
+
+--team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
+レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
+以後の push は自動で再レビューされる（--watch）。
+USAGE
+}
+
+# チームのメンバー名を --reviewer <cli>:<model>:<effort> に対応付ける
+member_spec() {
+  case "$1" in
+    opus)  echo "claude:claude-opus-5-5:high" ;;
+    fable) echo "claude:claude-fable-5-1:high" ;;
+    sol)   echo "codex:gpt-6.1-sol:high" ;;
+    astra) echo "codex:gpt-6-astra:high" ;;
+    grok)  echo "grok:grok-4.7-build-fast:high" ;;
+    argon) echo "agy:gemini-4-argon-high:high" ;;
+    *) return 1 ;;
+  esac
+}
+
+fail() {
+  echo "review-team: $1" >&2
+  usage
+  exit 1
+}
+
+TEAM=""
+REVIEW_TARGET=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --team)
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--team にチーム名を指定してください"
+      TEAM="$2"
+      shift 2
+      ;;
+    --team=*)
+      TEAM="${1#--team=}"
+      [ -n "$TEAM" ] || fail "--team にチーム名を指定してください"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      fail "不明なオプションです: $1"
+      ;;
+    *)
+      [ -z "$REVIEW_TARGET" ] || fail "URL は1つだけ指定してください"
+      REVIEW_TARGET="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$REVIEW_TARGET" ]; then
+  usage
+  exit 1
+fi
+
+reviewer_args=""
+if [ -n "$TEAM" ]; then
+  case "$TEAM" in
+    *[!a-z-]*|-*|*-|*--*) fail "不明なチームです: $TEAM" ;;
+  esac
+  seen=" "
+  for member in ${TEAM//-/ }; do
+    spec="$(member_spec "$member")" || fail "不明なメンバーです: $member（チーム: $TEAM）"
+    case "$seen" in
+      *" $member "*) fail "メンバーが重複しています: $member（チーム: $TEAM）" ;;
+    esac
+    seen="$seen$member "
+    reviewer_args="$reviewer_args --reviewer $spec"
+  done
+fi
+
+work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
+mkdir -p "$work_root"
+cd "$work_root"
+exec claude --effort xhigh --permission-mode auto "/review-team --comment --watch${reviewer_args} $REVIEW_TARGET"
