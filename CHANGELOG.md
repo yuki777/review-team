@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.22](https://github.com/yuki777/review-team/compare/v0.1.21...v0.1.22) - 2026-10-19
+
+- ウォッチの期限の既定を6時間にし、自動再レビューで外の状態を待たない決まりを足す by @yuki777 in https://github.com/yuki777/review-team/pull/80
+
 ## [v0.1.21](https://github.com/yuki777/review-team/compare/v0.1.20...v0.1.21) - 2026-10-19
 
 - ウォッチの再レビュー中も head を見張り、進んだらリードを止める by @yuki777 in https://github.com/yuki777/review-team/pull/76
