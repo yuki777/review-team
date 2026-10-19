@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.16](https://github.com/yuki777/review-team/compare/v0.1.15...v0.1.16) - 2026-10-19
+
+- feat(review-team): 自動再レビューの上限の既定を5回にする by @yuki777 in https://github.com/yuki777/review-team/pull/61
+
 ## [v0.1.15](https://github.com/yuki777/review-team/compare/v0.1.14...v0.1.15) - 2026-10-17
 
 - feat(review-team): head が進んでも止まらずに新しい head の再レビューへつなぐ by @yuki777 in https://github.com/yuki777/review-team/pull/58
