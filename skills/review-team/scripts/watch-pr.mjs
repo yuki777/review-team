@@ -18,9 +18,9 @@ const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
 const help = `review-team watch: 投稿したPRに新しいpushがあれば、定期的に再レビューして投稿します。
 
-node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--max-rereviews 3] [--ttl-hours 12]
+node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--max-rereviews 5] [--ttl-hours 12]
     投稿に成功したレビューを記録する。未登録のPRなら登録し、tick の定期実行が未登録なら登録する
-node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--max-rereviews 3] [--ttl-hours 12]
+node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--max-rereviews 5] [--ttl-hours 12]
     レビュー中にheadが進み続けて投稿できなかったPRを、レビュー済みのcommitなしで登録し、最初の投稿をtickに任せる
 node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なものだけ再レビューを起動する（定期実行の本体）
 node watch-pr.mjs list       ウォッチ中・停止済みのPRを表示する
@@ -116,7 +116,7 @@ async function load(values) {
   const url = manifest.repository?.pr?.url;
   if (!url) throw new Error('--prで実行したレビューではありません。');
   const file = statePath(url);
-  const maxRereviews = Number(values['max-rereviews'] ?? 3);
+  const maxRereviews = Number(values['max-rereviews'] ?? 5);
   const ttlHours = Number(values['ttl-hours'] ?? 12);
   if (!Number.isInteger(maxRereviews) || maxRereviews < 0) throw new Error('--max-rereviewsは0以上の整数にしてください。');
   if (!Number.isFinite(ttlHours) || ttlHours < 0) throw new Error('--ttl-hoursは0以上の数値にしてください。');
