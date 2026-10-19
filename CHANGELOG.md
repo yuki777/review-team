@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.20](https://github.com/yuki777/review-team/compare/v0.1.19...v0.1.20) - 2026-10-19
+
+- runner: refs/pull/N/head が PR の head とずれていたら head のコミットを直接取る by @yuki777 in https://github.com/yuki777/review-team/pull/75
+
 ## [v0.1.19](https://github.com/yuki777/review-team/compare/v0.1.18...v0.1.19) - 2026-10-19
 
 - PR に投稿する指摘に、検出したモデルを HTML コメントで残す by @yuki777 in https://github.com/yuki777/review-team/pull/70
