@@ -98,8 +98,11 @@ test('--versionはVERSIONの版を標準出力に出して終了コード0で終
 test('シンボリックリンク経由で実行しても、実体の隣のVERSIONを読む', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-link-'));
   await symlink(skillDir, join(dir, 'skill'));
-  await symlink(join(dir, 'skill', 'scripts', 'review-team'), join(dir, 'review-team'));
-  const { code, stdout } = await run(['--version'], join(dir, 'review-team'));
+  await mkdir(join(dir, 'bin'));
+  // 絶対パスと相対パスのリンクを2段たどる: bin/rt -> <dir>/bin/review-team -> ../skill/scripts/review-team
+  await symlink(join('..', 'skill', 'scripts', 'review-team'), join(dir, 'bin', 'review-team'));
+  await symlink(join(dir, 'bin', 'review-team'), join(dir, 'bin', 'rt'));
+  const { code, stdout } = await run(['--version'], join(dir, 'bin', 'rt'));
   assert.equal(code, 0);
   assert.equal(stdout, `review-team v${(await readFile(versionFile, 'utf8')).trim()}\n`);
 });
