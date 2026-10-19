@@ -160,8 +160,11 @@ work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_r
 同梱の `scripts/review-team` は、上のワンライナーに `--comment --watch` を付けて起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
 
 ```sh
-ln -s ~/.agents/skills/review-team/scripts/review-team ~/bin/review-team
+mkdir -p ~/.local/bin
+ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
 ```
+
+`~/.local/bin` が PATH に入っていなければ、シェルの設定ファイル（`~/.zshrc` など）に `export PATH="$HOME/.local/bin:$PATH"` を足します。
 
 ```sh
 review-team <PR-URL>                  # 既定のレビュアー
