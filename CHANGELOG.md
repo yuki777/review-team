@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.18](https://github.com/yuki777/review-team/compare/v0.1.17...v0.1.18) - 2026-10-19
+
+- レビュアーの一部が失敗しても、2人以上成功すれば確かめずに判定へ進む by @yuki777 in https://github.com/yuki777/review-team/pull/67
+
 ## [v0.1.17](https://github.com/yuki777/review-team/compare/v0.1.16...v0.1.17) - 2026-10-19
 
 - feat(review-team): ターミナルから起動するコマンド review-team を同梱する by @yuki777 in https://github.com/yuki777/review-team/pull/64
