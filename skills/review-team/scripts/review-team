@@ -2,9 +2,24 @@
 
 set -euo pipefail
 
+# シンボリックリンク経由でも、実体の隣の VERSION を読む（readlink -f のない古い macOS でも動くようにたどる）
+version() {
+  local path="${BASH_SOURCE[0]}" target
+  while [ -L "$path" ]; do
+    target="$(readlink "$path")"
+    case "$target" in
+      /*) path="$target" ;;
+      *) path="$(dirname "$path")/$target" ;;
+    esac
+  done
+  echo "v$(cat "$(dirname "$path")/../VERSION")"
+}
+
 usage() {
+  echo "review-team $(version)" >&2
   cat >&2 <<'USAGE'
 usage: review-team [--team <TEAM>] <PR-URL>
+       review-team --version
 
 TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
 
@@ -65,6 +80,10 @@ while [ $# -gt 0 ]; do
       ;;
     -h|--help)
       usage
+      exit 0
+      ;;
+    --version)
+      echo "review-team $(version)"
       exit 0
       ;;
     -*)
