@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.21](https://github.com/yuki777/review-team/compare/v0.1.20...v0.1.21) - 2026-10-19
+
+- ウォッチの再レビュー中も head を見張り、進んだらリードを止める by @yuki777 in https://github.com/yuki777/review-team/pull/76
+
 ## [v0.1.20](https://github.com/yuki777/review-team/compare/v0.1.19...v0.1.20) - 2026-10-19
 
 - runner: refs/pull/N/head が PR の head とずれていたら head のコミットを直接取る by @yuki777 in https://github.com/yuki777/review-team/pull/75
