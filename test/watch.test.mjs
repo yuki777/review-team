@@ -93,7 +93,7 @@ cp "${diff}" "$out/reviewed.diff"
   return { tickAfterQuiet, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
 }
 
-test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
+test('recordはPRを6時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
   const t = await setup();
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'aaa' });
@@ -103,7 +103,7 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   const s = await t.state();
   assert.equal(s.effort, 'max');
   assert.equal(s.maxRereviews, 5);
-  assert.equal(Date.parse(s.expiresAt) - Date.parse(s.registeredAt), 12 * 3600 * 1000);
+  assert.equal(Date.parse(s.expiresAt) - Date.parse(s.registeredAt), 6 * 3600 * 1000);
   assert.match(await t.tick(), /skip \(reviewed\)/);
   assert.equal(await readFile(t.leadLog, 'utf8').catch(() => ''), '');
 });
