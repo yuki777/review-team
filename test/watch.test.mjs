@@ -98,7 +98,7 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
   const s = await t.state();
   assert.equal(s.effort, 'max');
-  assert.equal(s.maxRereviews, 3);
+  assert.equal(s.maxRereviews, 5);
   assert.equal(Date.parse(s.expiresAt) - Date.parse(s.registeredAt), 12 * 3600 * 1000);
   assert.match(await t.tick(), /skip \(reviewed\)/);
   assert.equal(await readFile(t.leadLog, 'utf8').catch(() => ''), '');
@@ -129,7 +129,7 @@ test('新しいheadは次のtickでも変わっていなければ再レビュー
   assert.equal(s.lastReviewedCommit, 'ddd');
   assert.equal(s.rereviews, 1);
   assert.equal(s.failures, 0);
-  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/3 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
+  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/5 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
 test('再レビューは登録時のレビューと同じレビュアーで起動する', async () => {
@@ -146,7 +146,7 @@ test('再レビューは登録時のレビューと同じレビュアーで起�
   await writeFile(t.diff, 'diff-b');
   await t.tickAfterQuiet();
   assert.match(await readFile(t.leadLog, 'utf8'),
-    / --rereview 1\/3 --reviewer claude:claude-opus-5-5:high --reviewer grok:grok-4.7:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
+    / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer grok:grok-4.7:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
 test('レビュアーを記録していない以前のウォッチは、agyを含まない以前の既定で再レビューする', async () => {
@@ -160,7 +160,7 @@ test('レビュアーを記録していない以前のウォッチは、agyを�
   await writeFile(t.diff, 'diff-b');
   await t.tickAfterQuiet();
   assert.match(await readFile(t.leadLog, 'utf8'),
-    / --rereview 1\/3 --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high https:/);
+    / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high https:/);
 });
 
 test('再レビューは上限で止まり、マージでも止まる', async () => {
@@ -273,7 +273,7 @@ test('再レビュー中にheadが進んだ回は失敗にも回数にも数え�
   assert.equal(s.lastReviewedCommit, 'ccc');
   assert.equal(s.rereviews, 1);
   assert.equal(s.supersededRuns, 0);
-  assert.match(await readFile(t.leadLog, 'utf8'), / --rereview 1\/3 .*\n.* --rereview 1\/3 /);
+  assert.match(await readFile(t.leadLog, 'utf8'), / --rereview 1\/5 .*\n.* --rereview 1\/5 /);
 });
 
 test('追い越しが続くと静穏時間を延ばし、4倍で止める', async () => {
