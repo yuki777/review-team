@@ -167,20 +167,21 @@ test('レビュアーを記録していない以前のウォッチは、agyを�
     / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high https:/);
 });
 
-test('再レビューは上限で止まり、マージでも止まる', async () => {
+test('上限の回を投稿した次のtickで、GitHubに問い合わせずに解除し、マージでも解除する', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });
   await writeFile(t.diff, 'diff-0\n');
   await t.register('aaa', ['--max-rereviews', '2']);
-  for (const head of ['b1', 'b2', 'b3']) {
+  for (const head of ['b1', 'b2']) {
     await writeFile(t.diff, `diff-${head}\n`);
     await t.setPr({ headRefOid: head });
-    await t.tick();
-    await t.tick();
+    assert.match(await t.tickAfterQuiet(), /: review$/m);
   }
-  const s = await t.state();
-  assert.equal(s.rereviews, 2);
-  assert.equal(s.stoppedReason, 'limit');
+  assert.equal((await t.state()).rereviews, 2);
+  // No new push is needed, and GitHub is not asked.
+  await writeFile(t.pr, 'not json');
+  assert.match(await t.tick(), /remove \(limit\)/);
+  assert.equal(await stat(t.stateFile).catch(() => null), null);
   assert.equal((await readFile(t.leadLog, 'utf8')).trim().split('\n').length, 2);
 
   const merged = await setup();
@@ -188,12 +189,22 @@ test('再レビューは上限で止まり、マージでも止まる', async ()
   await writeFile(merged.diff, 'diff\n');
   await merged.register('aaa');
   await merged.setPr({ state: 'MERGED', headRefOid: 'bbb' });
-  assert.match(await merged.tick(), /stop \(merged\)/);
-  assert.equal((await merged.state()).stoppedReason, 'merged');
+  assert.match(await merged.tick(), /remove \(merged\)/);
+  assert.equal(await stat(merged.stateFile).catch(() => null), null);
   assert.equal(await merged.tick(), '');
 });
 
-test('投稿を記録しなかった再レビューは失敗として数え、2回続くと止まる。期限切れでも止まる', async () => {
+test('以前の版で止まったウォッチは、失敗で止まったもの以外を解除する', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff\n');
+  await t.register('aaa');
+  await writeFile(t.stateFile, JSON.stringify({ ...await t.state(), stoppedReason: 'expired' }));
+  assert.match(await t.tick(), /remove \(expired\)/);
+  assert.equal(await stat(t.stateFile).catch(() => null), null);
+});
+
+test('投稿を記録しなかった再レビューは失敗として数え、2回続くと停止して残る。期限切れは解除する', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });
   await writeFile(t.diff, 'diff-0\n');
@@ -206,18 +217,23 @@ test('投稿を記録しなかった再レビューは失敗として数え、2�
   await t.tick();
   assert.equal((await t.state()).failures, 2);
   assert.match(await t.tick(), /stop \(failed\)/);
+  assert.equal((await t.state()).stoppedReason, 'failed');
+  assert.equal(await t.tick(), '');
+  assert.match((await t.cli('list')).stdout, /停止\(failed\)/);
+  // Registering again after a stop starts a fresh watch.
+  assert.equal((await t.register('bbb')).registered, true);
+  assert.equal((await t.state()).stoppedReason, null);
 
   const expired = await setup();
   await expired.setPr({ headRefOid: 'aaa' });
   await writeFile(expired.diff, 'diff\n');
   await expired.register('aaa', ['--ttl-hours', '0']);
-  assert.match(await expired.tick(), /stop \(expired\)/);
-  // Registering again after a stop starts a fresh watch.
-  assert.equal((await expired.register('aaa')).registered, true);
-  assert.equal((await expired.state()).stoppedReason, null);
+  assert.match(await expired.tick(), /remove \(expired\)/);
+  assert.equal(await stat(expired.stateFile).catch(() => null), null);
+  assert.equal((await expired.cli('list')).stdout, '');
 });
 
-test('止まらない再レビューは制限時間で止めて失敗に数え、期限切れはGitHubに届かなくても止まる', async () => {
+test('止まらない再レビューは制限時間で止めて失敗に数え、期限切れはGitHubに届かなくても解除する', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });
   await writeFile(t.diff, 'diff-0\n');
@@ -235,7 +251,8 @@ test('止まらない再レビューは制限時間で止めて失敗に数え�
   await writeFile(offline.diff, 'diff\n');
   await offline.register('aaa', ['--ttl-hours', '0']);
   await writeFile(offline.pr, 'not json');
-  assert.match(await offline.tick(), /stop \(expired\)/);
+  assert.match(await offline.tick(), /remove \(expired\)/);
+  assert.equal(await stat(offline.stateFile).catch(() => null), null);
 });
 
 test('再レビュー中に解除したウォッチは、その再レビューの記録で戻らない', async () => {

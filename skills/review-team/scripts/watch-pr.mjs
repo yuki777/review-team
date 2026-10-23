@@ -24,13 +24,14 @@ node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--ma
 node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--max-rereviews 5] [--ttl-hours 6]
     レビュー中にheadが進み続けて投稿できなかったPRを、レビュー済みのcommitなしで登録し、最初の投稿をtickに任せる
 node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なものだけ再レビューを起動する（定期実行の本体）
-node watch-pr.mjs list       ウォッチ中・停止済みのPRを表示する
+node watch-pr.mjs list       ウォッチ中と、失敗で停止したPRを表示する
 node watch-pr.mjs remove <PR-URL>
                              ウォッチをやめる
 node watch-pr.mjs install    launchd に1分ごとの tick を登録する（macOS）。Linux では crontab の行を表示する
 node watch-pr.mjs uninstall  launchd の登録を外す
 
-止める条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した、失敗が${maxFailures}回続いた
+解除する条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した（上限の回を投稿した次の tick で解除する）。状態ファイルを消すので list に出なくなる。理由は tick.log に remove (merged) のように残る
+停止する条件: 失敗が${maxFailures}回続いた。list に停止(failed)として残る。remove で消すか、--watch で登録し直す
 見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRの再レビューが実行中
 追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
 `;
@@ -123,7 +124,7 @@ async function load(values) {
   if (!Number.isFinite(ttlHours) || ttlHours < 0) throw new Error('--ttl-hoursは0以上の数値にしてください。');
   const now = new Date();
   const found = await readState(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
-  // A stopped watch is registered afresh, so --watch on a PR whose watch expired starts a new one.
+  // A stopped watch is registered afresh, so --watch on a PR whose watch failed starts a new one.
   const previous = found?.stoppedReason ? null : found;
   // While a re-review runs, a missing or stopped watch was removed or stopped meanwhile; its post must not bring it back.
   if (!previous && await locked(`${file}.lock`)) {
@@ -180,16 +181,19 @@ async function fetchPr(url) {
 
 // Returns what tick should do with one watched PR. Only the gh queries and the state file decide it.
 async function decide(state, file, now = Date.now()) {
-  if (state.stoppedReason) return { action: 'stopped' };
+  if (state.stoppedReason === 'failed') return { action: 'stopped' };
+  // Earlier versions kept watches stopped for other reasons; they are removed now.
+  if (state.stoppedReason) return { action: 'remove', reason: state.stoppedReason };
+  // run() counts the re-review when it starts, so the limit is checked only after this, never during the last re-review.
   if (await locked(`${file}.lock`)) return { action: 'skip', reason: 'running' };
-  // Conditions that need only the state come first, so an expired watch stops even while GitHub is unreachable.
-  if (now >= Date.parse(state.expiresAt)) return { action: 'stop', reason: 'expired' };
+  // Conditions that need only the state come first, so an expired watch ends even while GitHub is unreachable.
+  if (now >= Date.parse(state.expiresAt)) return { action: 'remove', reason: 'expired' };
   if (state.failures >= maxFailures) return { action: 'stop', reason: 'failed' };
-  const pr = await fetchPr(state.pr);
-  if (pr.state !== 'OPEN') return { action: 'stop', reason: pr.state.toLowerCase() };
-  if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
   // A deferred watch has not posted yet; its first post is not a re-review and does not use the allowance.
-  if (state.lastReviewedCommit != null && state.rereviews >= state.maxRereviews) return { action: 'stop', reason: 'limit' };
+  if (state.lastReviewedCommit != null && state.rereviews >= state.maxRereviews) return { action: 'remove', reason: 'limit' };
+  const pr = await fetchPr(state.pr);
+  if (pr.state !== 'OPEN') return { action: 'remove', reason: pr.state.toLowerCase() };
+  if (pr.head === state.lastReviewedCommit) return { action: 'skip', reason: 'reviewed' };
   if (pr.isDraft) return { action: 'skip', reason: 'draft' };
   // Commit dates can be old or skewed after a rebase or cherry-pick, so the quiet time counts from when tick first saw the head.
   if (state.pendingHead !== pr.head) return { action: 'observe', reason: 'settling', head: pr.head };
@@ -215,7 +219,9 @@ async function tick() {
         continue;
       }
       if (decision.action !== 'stopped') console.log(`${state.pr}: ${decision.action}${decision.reason ? ` (${decision.reason})` : ''}`);
-      if (decision.action === 'stop') {
+      if (decision.action === 'remove') {
+        await deleteWatch(file);
+      } else if (decision.action === 'stop') {
         await updateState(file, { stoppedReason: decision.reason, stoppedAt: new Date().toISOString() });
       } else if (decision.action === 'observe') {
         await updateState(file, { pendingHead: decision.head, pendingSince: new Date().toISOString() });
@@ -347,8 +353,10 @@ async function list() {
   }
 }
 
+const deleteWatch = file => rm(file, { force: true });
+
 async function remove(url) {
-  await rm(statePath(url), { force: true });
+  await deleteWatch(statePath(url));
   console.log(`ウォッチをやめました: ${url}`);
 }
 
