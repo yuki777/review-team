@@ -178,6 +178,10 @@ test('上限の回を投稿した次のtickで、GitHubに問い合わせずに�
     assert.match(await t.tickAfterQuiet(), /: review$/m);
   }
   assert.equal((await t.state()).rereviews, 2);
+  // While the last re-review still runs, its watch stays so the lead can record the post.
+  await writeFile(`${t.stateFile}.lock`, String(process.pid));
+  assert.match(await t.tick(), /skip \(running\)/);
+  await rm(`${t.stateFile}.lock`);
   // No new push is needed, and GitHub is not asked.
   await writeFile(t.pr, 'not json');
   assert.match(await t.tick(), /remove \(limit\)/);
