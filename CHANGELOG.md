@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.24](https://github.com/yuki777/review-team/compare/v0.1.23...v0.1.24) - 2026-10-23
+
+- ウォッチをマージ・期限切れ・上限で自動で解除し、上限は最後の再レビューの直後に止める by @yuki777 in https://github.com/yuki777/review-team/pull/86
+
 ## [v0.1.23](https://github.com/yuki777/review-team/compare/v0.1.22...v0.1.23) - 2026-10-19
 
 - review-team コマンドで版を表示する（USAGE と --version） by @yuki777 in https://github.com/yuki777/review-team/pull/83
