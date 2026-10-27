@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.25](https://github.com/yuki777/review-team/compare/v0.1.24...v0.1.25) - 2026-10-27
+
+- 指摘を検出したモデルを Model の行で表示する by @yuki777 in https://github.com/yuki777/review-team/pull/88
+
 ## [v0.1.24](https://github.com/yuki777/review-team/compare/v0.1.23...v0.1.24) - 2026-10-23
 
 - ウォッチをマージ・期限切れ・上限で自動で解除し、上限は最後の再レビューの直後に止める by @yuki777 in https://github.com/yuki777/review-team/pull/86
