@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.29](https://github.com/yuki777/review-team/compare/v0.1.28...v0.1.29) - 2026-10-28
+
+- /review-team の補完に引数ヒントを出す by @yuki777 in https://github.com/yuki777/review-team/pull/100
+
 ## [v0.1.28](https://github.com/yuki777/review-team/compare/v0.1.27...v0.1.28) - 2026-10-28
 
 - 自分宛てのレビュー依頼が来た PR を毎時見つけて自動でレビューする by @yuki777 in https://github.com/yuki777/review-team/pull/97
