@@ -60,10 +60,15 @@ async function review(url, values) {
     const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', log.fd, log.fd], detached: true });
     const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
     let force;
-    const timer = setTimeout(() => { kill('SIGTERM'); force = setTimeout(() => kill('SIGKILL'), 30000); }, reviewTimeoutMs());
+    let stopping = false;
+    const timer = setTimeout(() => { stopping = true; kill('SIGTERM'); force = setTimeout(() => kill('SIGKILL'), 30000); }, reviewTimeoutMs());
     const finish = result => { clearTimeout(timer); clearTimeout(force); done(result); };
     child.on('error', () => finish(-1));
-    child.on('exit', (exitCode, signal) => finish(exitCode ?? signal));
+    child.on('exit', (exitCode, signal) => {
+      // Children that ignored SIGTERM may outlive the lead; kill the group before the next PR starts.
+      if (stopping) kill('SIGKILL');
+      finish(exitCode ?? signal);
+    });
   });
   await log.close();
   return code;
@@ -75,9 +80,16 @@ async function scan(values) {
   if (!await acquireLock(lock)) { console.log('前回の scan が実行中なので終わります。'); return; }
   try {
     const started = JSON.parse(await readFile(startedPath(), 'utf8').catch(() => '{}'));
-    for (const pr of await searchPrs(values.org)) {
-      const reason = await skipReason(pr, started);
-      if (reason) { console.log(`${pr.url}: skip (${reason})`); continue; }
+    // A review can take an hour or more, so the search is made again before each one and picks one PR that is ready now.
+    // Each review records its head, so the loop ends once every ready PR has been started.
+    for (;;) {
+      let pr;
+      for (const found of await searchPrs(values.org)) {
+        const reason = await skipReason(found, started);
+        if (!reason) { pr = found; break; }
+        console.log(`${found.url}: skip (${reason})`);
+      }
+      if (!pr) break;
       // Recorded before the review, so a review that fails is not retried every hour on the same head.
       started[pr.url] = pr.head;
       await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });

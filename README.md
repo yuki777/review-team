@@ -209,7 +209,7 @@ node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall
 - コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
 - `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
 - 同じ head で一度レビューを始めた PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
-- 1件90分で打ち切り、次の PR へ進みます。前の回が終わっていなければ、次の回は何もしません。
+- 1件ずつ順にレビューし、次の PR に進む前に検索し直します（待っている間に push や CI の失敗があった PR は始めません）。1件90分で打ち切ります。前の回が終わっていなければ、次の回は何もしません。
 - install は、`claude`・`gh`・`node` が通る端末から実行してください。その時点の PATH を plist に写します。組織名は手元の plist（`~/Library/LaunchAgents/io.github.yuki777.review-team.scan.plist`）にだけ入ります。
 - ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。
 

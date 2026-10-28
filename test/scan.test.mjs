@@ -23,14 +23,17 @@ for arg; do echo "$arg" >> "${ghLog}"; done
 cat "${search}"
 `);
   await writeFile(join(bin, 'claude'), `#!/bin/sh
-[ -f "${join(dir, 'claude-hangs')}" ] && { sleep 60 & echo $! >> "${join(dir, 'sleep.pid')}"; wait; }
+# The sleep ignores SIGTERM, as a reviewer that does not stop would.
+[ -f "${join(dir, 'claude-hangs')}" ] && { trap '' TERM; sleep 60 & echo $! >> "${join(dir, 'sleep.pid')}"; trap - TERM; wait; }
 echo "$*" >> "${claudeLog}"
+# A push or a red CI while this review runs changes what the next search returns.
+[ -f "${join(dir, 'next-search.json')}" ] && mv "${join(dir, 'next-search.json')}" "${search}"
 `);
   await chmod(join(bin, 'gh'), 0o755);
   await chmod(join(bin, 'claude'), 0o755);
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), REVIEW_TEAM_SCAN_TIMEOUT: '1' };
   delete env.REVIEW_TEAM_DEPTH;
-  const setPrs = prs => writeFile(search, JSON.stringify({ data: { search: { nodes: prs.map(pr => ({
+  const setPrs = (prs, file = search) => writeFile(file, JSON.stringify({ data: { search: { nodes: prs.map(pr => ({
     url: url(pr.n), headRefOid: pr.head ?? 'aaa', mergeable: pr.mergeable ?? 'MERGEABLE',
     commits: { nodes: [{ commit: { statusCheckRollup: pr.ci === undefined ? { state: 'SUCCESS' } : pr.ci && { state: pr.ci } } }] },
   })) } } }));
@@ -73,7 +76,16 @@ test('同じheadは失敗しても次の回でやり直さず、新しいheadな
   assert.equal((await reviews()).length, 2);
 });
 
-test('止まらないレビューは制限時間で止め、次のPRへ進む', async () => {
+test('レビューのたびに検索し直し、待っている間にCIが赤くなったPRは始めない', async () => {
+  const { dir, setPrs, scan, reviews } = await setup();
+  await setPrs([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  await setPrs([{ n: 1 }, { n: 2, ci: 'FAILURE' }, { n: 3 }], join(dir, 'next-search.json'));
+  const { stdout } = await scan();
+  assert.match(stdout, new RegExp(`${url(2)}: skip \\(ci failed\\)`));
+  assert.deepEqual((await reviews()).map(line => line.split(' ').at(-1)), [url(1), url(3)]);
+});
+
+test('止まらないレビューは、SIGTERMを無視する子も含めて制限時間で止め、次のPRへ進む', async () => {
   const { dir, setPrs, scan } = await setup();
   await writeFile(join(dir, 'claude-hangs'), '');
   await setPrs([{ n: 1 }, { n: 2 }]);
