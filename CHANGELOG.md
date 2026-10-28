@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.28](https://github.com/yuki777/review-team/compare/v0.1.27...v0.1.28) - 2026-10-28
+
+- 自分宛てのレビュー依頼が来た PR を毎時見つけて自動でレビューする by @yuki777 in https://github.com/yuki777/review-team/pull/97
+
 ## [v0.1.27](https://github.com/yuki777/review-team/compare/v0.1.26...v0.1.27) - 2026-10-28
 
 - --act-on-only で PR には Act On の指摘だけを投稿する by @yuki777 in https://github.com/yuki777/review-team/pull/94
