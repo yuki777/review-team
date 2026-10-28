@@ -19,9 +19,10 @@ const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
 const help = `review-team watch: 投稿したPRに新しいpushがあれば、定期的に再レビューして投稿します。
 
-node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--max-rereviews 5] [--ttl-hours 6]
+node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--act-on-only] [--max-rereviews 5] [--ttl-hours 6]
     投稿に成功したレビューを記録する。未登録のPRなら登録し、tick の定期実行が未登録なら登録する
-node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--max-rereviews 5] [--ttl-hours 6]
+    --act-on-only は登録するときだけ記録し、再レビューの投稿を Act On だけにする
+node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--act-on-only] [--max-rereviews 5] [--ttl-hours 6]
     レビュー中にheadが進み続けて投稿できなかったPRを、レビュー済みのcommitなしで登録し、最初の投稿をtickに任せる
 node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なものだけ再レビューを起動する（定期実行の本体）
 node watch-pr.mjs list       ウォッチ中と、失敗で停止したPRを表示する
@@ -134,7 +135,7 @@ async function load(values) {
   // Re-reviews use the reviewers of the first review, so a reviewer the user left out stays out.
   const reviewers = (manifest.reviewers ?? []).map(r => `${r.cli}:${r.requestedModel}:${r.requestedEffort}`);
   const state = previous ?? {
-    pr: url, effort: values.effort ?? 'xhigh', reviewers,
+    pr: url, effort: values.effort ?? 'xhigh', reviewers, actOnOnly: values['act-on-only'] ?? false,
     maxRereviews, registeredAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + ttlHours * 3600 * 1000).toISOString(),
     rereviews: 0, failures: 0, supersededRuns: 0, stoppedReason: null,
@@ -276,7 +277,8 @@ async function run(file) {
     // Watches registered before reviewers were recorded keep the default of that time, which had no agy.
     const reviewers = state.reviewers ?? ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high', 'grok:grok-4.7-build-fast:high'];
     const reviewerArgs = reviewers.map(spec => `--reviewer ${spec} `).join('');
-    const prompt = `/review-team --comment --rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
+    const actOnOnly = state.actOnOnly ? '--act-on-only ' : '';
+    const prompt = `/review-team --comment ${actOnOnly}--rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
     await rm(posting, { force: true });
     let movedTo = null;
@@ -426,7 +428,7 @@ async function uninstall() {
 
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    output: { type: 'string' }, effort: { type: 'string' },
+    output: { type: 'string' }, effort: { type: 'string' }, 'act-on-only': { type: 'boolean' },
     'max-rereviews': { type: 'string' }, 'ttl-hours': { type: 'string' }, help: { type: 'boolean' },
   } });
   const [command, arg] = positionals;

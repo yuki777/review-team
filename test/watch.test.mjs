@@ -153,6 +153,19 @@ test('再レビューは登録時のレビューと同じレビュアーで起�
     / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer grok:grok-4.7:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
+test('--act-on-onlyで登録したウォッチは、記録し直しても再レビューに--act-on-onlyを付ける', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-a');
+  assert.equal((await t.register('aaa', ['--act-on-only'])).actOnOnly, true);
+  // A re-review records without the flag; the registered value stays.
+  assert.equal((await t.register('aaa')).actOnOnly, true);
+  await t.setPr({ headRefOid: 'bbb' });
+  await writeFile(t.diff, 'diff-b');
+  await t.tickAfterQuiet();
+  assert.match(await readFile(t.leadLog, 'utf8'), / \/review-team --comment --act-on-only --rereview 1\/5 https:/);
+});
+
 test('レビュアーを記録していない以前のウォッチは、agyを含まない以前の既定で再レビューする', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });

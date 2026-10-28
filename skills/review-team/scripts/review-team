@@ -18,7 +18,7 @@ version() {
 usage() {
   echo "review-team $(version)" >&2
   cat >&2 <<'USAGE'
-usage: review-team [--team <TEAM>] <PR-URL>
+usage: review-team [--team <TEAM>] [--act-on-only] <PR-URL>
        review-team --version
 
 TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -41,6 +41,7 @@ Teams (例):
 --team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
 レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
 以後の push は自動で再レビューされる（--watch）。
+--act-on-only を付けると、PR には Act On の指摘だけを投稿する（再レビューも同じ）。
 USAGE
 }
 
@@ -65,6 +66,7 @@ fail() {
 
 TEAM=""
 REVIEW_TARGET=""
+ACT_ON_ONLY=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -76,6 +78,10 @@ while [ $# -gt 0 ]; do
     --team=*)
       TEAM="${1#--team=}"
       [ -n "$TEAM" ] || fail "--team にチーム名を指定してください"
+      shift
+      ;;
+    --act-on-only)
+      ACT_ON_ONLY=" --act-on-only"
       shift
       ;;
     -h|--help)
@@ -121,4 +127,4 @@ fi
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
 cd "$work_root"
-exec claude --effort xhigh --permission-mode auto "/review-team --comment --watch${reviewer_args} $REVIEW_TARGET"
+exec claude --effort xhigh --permission-mode auto "/review-team --comment --watch${ACT_ON_ONLY}${reviewer_args} $REVIEW_TARGET"
