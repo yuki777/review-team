@@ -37,7 +37,7 @@ node watch-pr.mjs uninstall  launchd の登録を外す
 追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
 `;
 
-function stateRoot() {
+export function stateRoot() {
   return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'review-team');
 }
 
@@ -49,12 +49,12 @@ function parsePrUrl(url) {
   return { host, owner, repo, number };
 }
 
-function statePath(url) {
+export function statePath(url) {
   const { host, owner, repo, number } = parsePrUrl(url);
   return join(watchDir(), 'prs', host, owner, repo, `${number}.json`);
 }
 
-async function readState(file) {
+export async function readState(file) {
   return JSON.parse(await readFile(file, 'utf8'));
 }
 
@@ -86,7 +86,7 @@ function alive(pid) {
 }
 
 // A lock is a file holding the owner's pid. A lock whose owner has exited is taken over.
-async function acquireLock(path) {
+export async function acquireLock(path) {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   for (let i = 0; i < 2; i++) {
     try {
@@ -167,7 +167,7 @@ async function defer(values) {
   console.log(JSON.stringify({ registered: !previous, deferred: true, state: file, schedule, ...state }, null, 2));
 }
 
-async function gh(args) {
+export async function gh(args) {
   // A stalled gh would keep tick.lock held and stop every later tick, so each call gets a time limit.
   return (await execFileAsync('gh', args, { maxBuffer: 64 * 1024 * 1024, timeout: 120000 })).stdout;
 }
@@ -363,10 +363,10 @@ async function remove(url) {
 }
 
 const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
-const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // launchd and cron start jobs with a minimal environment, so the current PATH, state directory and CLI overrides are copied in.
-const scheduleEnv = () => Object.entries(process.env)
+export const scheduleEnv = () => Object.entries(process.env)
   .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && key !== 'REVIEW_TEAM_DEPTH' && key !== 'REVIEW_TEAM_WATCH_POSTING'));
 
 function plist() {

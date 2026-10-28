@@ -186,6 +186,8 @@ claude -p --effort <登録時の値> --permission-mode auto "/review-team --comm
 - 総評の対象コミットの下に `- 自動再レビュー: <n>/<上限> 回目` を足す。n が上限と同じなら、続けて「以後の push は自動ではレビューしません」と書く。n が 0 なら、`defer` で任された最初の投稿なので、この行を足さない。
 - 投稿を確かめられたら、上の `record` を `--effort` なしで実行する。`record` を実行しなかった回は、tick が失敗として数え、2回続くとウォッチを止める。
 
+利用者に質問できない非対話の起動（`claude -p`。`review-team --print` や `scan-prs.mjs` から）で、利用者に選んでもらう場面になったら、`--rereview` と同じく書き込みをせずに止め、理由を出力して終える。
+
 ## 由来
 
 cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex・Grok・Antigravity の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

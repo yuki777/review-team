@@ -177,6 +177,7 @@ review-team <PR-URL>                  # 既定のレビュアー
 review-team --team opus-sol <PR-URL>  # チームを指定
 review-team --team sol-opus <PR-URL>  # メンバーは順不同
 review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
+review-team --print <PR-URL>          # 画面を出さずに claude -p で動かす（launchd などから）
 ```
 
 チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になり、effort はすべて high です。
@@ -193,6 +194,24 @@ review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
 たとえば `opus-sol-grok-argon` は既定と同じ4人、`fable-astra` は Claude Fable 5.1 と Codex GPT 6 Astra の2人です。一覧は `review-team --help` で出ます。
 
 `--comment` と `--watch` が付くので、レビュー結果はプレビューの承認を待たずに PR に投稿され、以後の push も自動で再レビューされます。
+
+### 自分宛てのレビュー依頼を毎時見つけてレビューする（macOS）
+
+同梱の `scripts/scan-prs.mjs` は、指定した組織で自分宛てにレビュー依頼が来た PR を探し、上の `review-team` コマンドを `--print`（画面を出さない `claude -p`）で1件ずつ動かします。launchd に登録すると、毎時0分に動きます。スリープ中に逃した回は、起きたときに1回動きます。
+
+```sh
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs install --org <組織> --team opus-sol --act-on-only
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> --team opus-sol --act-on-only  # 今すぐ1回
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall
+```
+
+- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリは除きます）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
+- コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
+- `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
+- 同じ head で一度レビューを始めた PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
+- 1件90分で打ち切り、次の PR へ進みます。前の回が終わっていなければ、次の回は何もしません。
+- install は、`claude`・`gh`・`node` が通る端末から実行してください。その時点の PATH を plist に写します。組織名は手元の plist（`~/Library/LaunchAgents/io.github.yuki777.review-team.scan.plist`）にだけ入ります。
+- ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。
 
 ## リリース
 

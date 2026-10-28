@@ -76,6 +76,16 @@ test('--act-on-onlyは、チームの指定と並べても投稿の指示に--ac
   }
 });
 
+test('--printはclaude -pで起動し、ほかの引数は変えない', async () => {
+  for (const args of [['--print', prUrl], [prUrl, '--print', '--team', 'opus']]) {
+    const { code, argv } = await run(args);
+    assert.equal(code, 0, args.join(' '));
+    const reviewers = args.includes('--team') ? ' --reviewer claude:claude-opus-5-5:high' : '';
+    assert.deepEqual(argv, ['-p', '--effort', 'xhigh', '--permission-mode', 'auto',
+      `/review-team --comment --watch${reviewers} ${prUrl}`], args.join(' '));
+  }
+});
+
 test('不明なメンバー・重複・空のメンバー・引数の誤りは、claudeを起動せずに終了コード1で止まる', async () => {
   for (const args of [
     ['--team', 'opus-gemini', prUrl], ['--team', 'opus-opus', prUrl], ['--team', 'opus--sol', prUrl], ['--team', '-opus', prUrl],

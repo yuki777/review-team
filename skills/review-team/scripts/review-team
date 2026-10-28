@@ -18,7 +18,7 @@ version() {
 usage() {
   echo "review-team $(version)" >&2
   cat >&2 <<'USAGE'
-usage: review-team [--team <TEAM>] [--act-on-only] <PR-URL>
+usage: review-team [--team <TEAM>] [--act-on-only] [--print] <PR-URL>
        review-team --version
 
 TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -42,6 +42,7 @@ Teams (例):
 レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
 以後の push は自動で再レビューされる（--watch）。
 --act-on-only を付けると、PR には Act On の指摘だけを投稿する（再レビューも同じ）。
+--print を付けると、画面を出さずに claude -p で動かし、終わるまで待つ（launchd などから呼ぶとき）。
 USAGE
 }
 
@@ -67,6 +68,7 @@ fail() {
 TEAM=""
 REVIEW_TARGET=""
 ACT_ON_ONLY=""
+PRINT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -82,6 +84,10 @@ while [ $# -gt 0 ]; do
       ;;
     --act-on-only)
       ACT_ON_ONLY=" --act-on-only"
+      shift
+      ;;
+    --print)
+      PRINT=1
       shift
       ;;
     -h|--help)
@@ -127,4 +133,4 @@ fi
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
 cd "$work_root"
-exec claude --effort xhigh --permission-mode auto "/review-team --comment --watch${ACT_ON_ONLY}${reviewer_args} $REVIEW_TARGET"
+exec claude ${PRINT:+-p} --effort xhigh --permission-mode auto "/review-team --comment --watch${ACT_ON_ONLY}${reviewer_args} $REVIEW_TARGET"
