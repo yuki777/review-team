@@ -67,6 +67,15 @@ test('opus-sol-grok-argonはconfig/reviewers.jsonの既定と同じ4人になる
   assert.equal(argv.at(-1), prompt(defaults));
 });
 
+test('--act-on-onlyは、チームの指定と並べても投稿の指示に--act-on-onlyとして渡す', async () => {
+  for (const args of [['--act-on-only', prUrl], [prUrl, '--act-on-only', '--team', 'opus']]) {
+    const { code, argv } = await run(args);
+    assert.equal(code, 0, args.join(' '));
+    const reviewers = args.includes('--team') ? ' --reviewer claude:claude-opus-5-5:high' : '';
+    assert.equal(argv.at(-1), `/review-team --comment --watch --act-on-only${reviewers} ${prUrl}`, args.join(' '));
+  }
+});
+
 test('不明なメンバー・重複・空のメンバー・引数の誤りは、claudeを起動せずに終了コード1で止まる', async () => {
   for (const args of [
     ['--team', 'opus-gemini', prUrl], ['--team', 'opus-opus', prUrl], ['--team', 'opus--sol', prUrl], ['--team', '-opus', prUrl],

@@ -80,6 +80,12 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 /review-team --comment <PR-URL>
 ```
 
+`--act-on-only` を付けると、PR には Act On の指摘だけを投稿し、Consider はインラインにも総評にも出しません。主担当からの報告には Consider も残ります。`--watch` と一緒に付けると、以後の自動再レビューも Act On だけになります。ウォッチ中の PR で切り替えるときは、`watch-pr.mjs remove <PR-URL>` で外してから登録し直します。
+
+```
+/review-team --comment --act-on-only <PR-URL>
+```
+
 同じ PR に review-team が前回までに付けたスレッドがあれば、主担当が新しい head のコードで確かめ直します。直ったと確かめたものと、前回の指摘が誤りだったものは、根拠を書いた返信を付けて resolve します。一部だけ直ったものには残る点を返信し、作者が「対応しない」と返したものや直っていないものは開けたままにして、総評の「前回の指摘」に書きます。対象は自分のアカウントで review-team が始めたスレッドだけで、人やほかのボットのスレッドには触れません。resolve するスレッドと返信は、プレビューにも載ります。
 
 投稿は自分の GitHub アカウントで公開されます。古い head には投稿しません。レビュー中に PR の head が進んでいたら、push が落ち着くのを待って新しい head を同じレビュアーで自動で再レビューし（2回まで）、それを投稿します。`--comment` の同意はこの再レビューの投稿にも及びます。それでも head が動き続けるときは、`--comment` と `--watch` の両方があればウォッチに引き継いで最初の投稿を任せ、そうでなければ報告して終えます。差分の付け替えなど、head が進んだ以外の理由で止まったあとに投稿をやり直すときは、承認を待ちます。
@@ -170,6 +176,7 @@ ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
 review-team <PR-URL>                  # 既定のレビュアー
 review-team --team opus-sol <PR-URL>  # チームを指定
 review-team --team sol-opus <PR-URL>  # メンバーは順不同
+review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
 ```
 
 チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になり、effort はすべて high です。
