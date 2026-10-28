@@ -23,6 +23,8 @@ Reviewers, especially adversarial ones, tend to fill their review. If they don't
 
 "What if someone passes null here?" is only a finding if the caller can actually pass null. Trace the call site. If the input is validated upstream or the type system prevents it, dismiss the finding. Reviewers working from a diff can't always see the full call chain. You can.
 
+If a real path exists but needs a rare combination of input, environment, or timing, follow the rare-case rule in section 4 of [SKILL.md](../SKILL.md).
+
 ### Premature Abstraction Warnings
 
 Reviewers often suggest extracting functions, adding interfaces, or creating abstractions. Does this code need to change in a second way? If not, the abstraction is premature. Simple inline code that works beats a clean abstraction that's overkill for the current scope.
