@@ -2,6 +2,7 @@
 name: review-team
 description: "明示的に依頼された変更を、Claude Code・Codex・Grok・Antigravity の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
 disable-model-invocation: true
+argument-hint: "[--comment] [--watch] [--act-on-only] [PR URL・番号・ブランチ] [依頼文]"
 ---
 
 # review-team
