@@ -23,7 +23,7 @@ for arg; do echo "$arg" >> "${ghLog}"; done
 cat "${search}"
 `);
   await writeFile(join(bin, 'claude'), `#!/bin/sh
-[ -f "${join(dir, 'claude-hangs')}" ] && sleep 60
+[ -f "${join(dir, 'claude-hangs')}" ] && { sleep 60 & echo $! >> "${join(dir, 'sleep.pid')}"; wait; }
 echo "$*" >> "${claudeLog}"
 `);
   await chmod(join(bin, 'gh'), 0o755);
@@ -82,6 +82,12 @@ test('止まらないレビューは制限時間で止め、次のPRへ進む', 
   assert.ok(Date.now() - started < 10000);
   assert.match(stdout, new RegExp(`${url(1)}: exit SIGTERM`));
   assert.match(stdout, new RegExp(`${url(2)}: review`));
+  // The whole process group is stopped, so nothing the lead started is left running.
+  for (const pid of (await readFile(join(dir, 'sleep.pid'), 'utf8')).trim().split('\n')) {
+    const alive = () => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };
+    for (let i = 0; i < 40 && alive(); i++) await new Promise(done => setTimeout(done, 50));
+    assert.equal(alive(), false);
+  }
 });
 
 test('--orgが無ければ止まる', async () => {
