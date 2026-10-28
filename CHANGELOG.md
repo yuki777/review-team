@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.27](https://github.com/yuki777/review-team/compare/v0.1.26...v0.1.27) - 2026-10-28
+
+- --act-on-only で PR には Act On の指摘だけを投稿する by @yuki777 in https://github.com/yuki777/review-team/pull/94
+
 ## [v0.1.26](https://github.com/yuki777/review-team/compare/v0.1.25...v0.1.26) - 2026-10-28
 
 - 重大な不具合やセキュリティでないレアケースの指摘は分類を1つ下げる by @yuki777 in https://github.com/yuki777/review-team/pull/91
