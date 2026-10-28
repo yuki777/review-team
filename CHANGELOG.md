@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.26](https://github.com/yuki777/review-team/compare/v0.1.25...v0.1.26) - 2026-10-28
+
+- 重大な不具合やセキュリティでないレアケースの指摘は分類を1つ下げる by @yuki777 in https://github.com/yuki777/review-team/pull/91
+
 ## [v0.1.25](https://github.com/yuki777/review-team/compare/v0.1.24...v0.1.25) - 2026-10-27
 
 - 指摘を検出したモデルを Model の行で表示する by @yuki777 in https://github.com/yuki777/review-team/pull/88
