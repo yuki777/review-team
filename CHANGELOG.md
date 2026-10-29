@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.33](https://github.com/yuki777/review-team/compare/v0.1.32...v0.1.33) - 2026-10-29
+
+- scan の最後に終了の時刻とレビュー・見送りの件数を出す by @yuki777 in https://github.com/yuki777/review-team/pull/110
+
 ## [v0.1.32](https://github.com/yuki777/review-team/compare/v0.1.31...v0.1.32) - 2026-10-29
 
 - README の scan-prs の例を effort 付きのチームにする by @yuki777 in https://github.com/yuki777/review-team/pull/108
