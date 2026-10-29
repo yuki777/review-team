@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -114,4 +114,13 @@ test('止まらないレビューは、SIGTERMを無視する子も含めて制�
 test('--orgが無ければ止まる', async () => {
   const { env } = await setup();
   await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan'], { env }), /--orgが必要です/);
+});
+
+test('スキルのディレクトリがシンボリックリンクでも、scan-prs.mjs と watch-pr.mjs は動く', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-link-'));
+  await symlink(new URL('../skills/review-team', import.meta.url).pathname, join(dir, 'skill'));
+  for (const name of ['scan-prs.mjs', 'watch-pr.mjs']) {
+    const { stdout } = await execFileAsync(process.execPath, [join(dir, 'skill', 'scripts', name), '--help']);
+    assert.match(stdout, /review-team/, name);
+  }
 });

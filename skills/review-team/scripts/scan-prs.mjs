@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import { acquireLock, escapeXml, gh, readState, scheduleEnv, statePath, stateRoot } from './watch-pr.mjs';
@@ -167,6 +168,7 @@ async function main() {
   throw new Error(`未対応のコマンドです: ${command}`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === script) {
+// Node resolves symlinks for the entry module, so compare real paths (the skill dir is often a symlink).
+if (process.argv[1] && realpathSync(process.argv[1]) === script) {
   await main().catch(error => { console.error(error.message); process.exitCode = 2; });
 }
