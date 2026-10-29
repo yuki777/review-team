@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.30](https://github.com/yuki777/review-team/compare/v0.1.29...v0.1.30) - 2026-10-29
+
+- review-team コマンドでメンバーごとに effort を指定できるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/103
+
 ## [v0.1.29](https://github.com/yuki777/review-team/compare/v0.1.28...v0.1.29) - 2026-10-28
 
 - /review-team の補完に引数ヒントを出す by @yuki777 in https://github.com/yuki777/review-team/pull/100
