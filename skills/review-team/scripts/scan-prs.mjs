@@ -90,10 +90,11 @@ async function scan(values) {
         const reason = await skipReason(found, started);
         if (!reason) { pr = found; break; }
         console.log(`${found.url}: skip (${reason})`);
-        skipped++;
+        if (reason !== 'started') skipped++;
       }
       if (!pr) {
-        console.log(`scan 終了 ${new Date().toISOString()}: レビュー ${reviewed} 件、見送り ${skipped} 件`);
+        // sv-SE gives local time as YYYY-MM-DD HH:MM:SS.
+        console.log(`scan 終了 ${new Date().toLocaleString('sv-SE')}: レビュー ${reviewed} 件、見送り ${skipped} 件`);
         break;
       }
       // Recorded before the review, so a review that fails is not retried every hour on the same head.
