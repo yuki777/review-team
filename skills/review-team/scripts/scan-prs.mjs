@@ -75,10 +75,13 @@ async function review(url, values) {
   return code;
 }
 
+// sv-SE gives local time as YYYY-MM-DD HH:MM:SS, so scan.log shows when each line happened.
+const say = message => console.log(`${new Date().toLocaleString('sv-SE')} ${message}`);
+
 async function scan(values) {
   if (!values.org) throw new Error('--orgが必要です。');
   const lock = join(scanDir(), 'scan.lock');
-  if (!await acquireLock(lock)) { console.log('前回の scan が実行中なので終わります。'); return; }
+  if (!await acquireLock(lock)) { say('前回の scan が実行中なので終わります。'); return; }
   try {
     const started = JSON.parse(await readFile(startedPath(), 'utf8').catch(() => '{}'));
     // A review can take an hour or more, so the search is made again before each one and picks one PR that is ready now.
@@ -90,19 +93,18 @@ async function scan(values) {
       for (const found of await searchPrs(values.org)) {
         const reason = await skipReason(found, started);
         if (!reason) { pr = found; break; }
-        console.log(`${found.url}: skip (${reason})`);
+        say(`${found.url}: skip (${reason})`);
         if (reason !== 'started') skipped++;
       }
       if (!pr) {
-        // sv-SE gives local time as YYYY-MM-DD HH:MM:SS.
-        console.log(`scan 終了 ${new Date().toLocaleString('sv-SE')}: レビュー ${reviewed} 件、見送り ${skipped} 件`);
+        say(`scan 終了: レビュー ${reviewed} 件、見送り ${skipped} 件`);
         break;
       }
       // Recorded before the review, so a review that fails is not retried every hour on the same head.
       started[pr.url] = pr.head;
       await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
-      console.log(`${pr.url}: review ${pr.head.slice(0, 12)}`);
-      console.log(`${pr.url}: exit ${await review(pr.url, values)}`);
+      say(`${pr.url}: review ${pr.head.slice(0, 12)}`);
+      say(`${pr.url}: exit ${await review(pr.url, values)}`);
       reviewed++;
     }
   } finally {
