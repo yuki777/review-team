@@ -82,19 +82,26 @@ async function scan(values) {
     const started = JSON.parse(await readFile(startedPath(), 'utf8').catch(() => '{}'));
     // A review can take an hour or more, so the search is made again before each one and picks one PR that is ready now.
     // Each review records its head, so the loop ends once every ready PR has been started.
+    let reviewed = 0;
     for (;;) {
       let pr;
+      let skipped = 0;
       for (const found of await searchPrs(values.org)) {
         const reason = await skipReason(found, started);
         if (!reason) { pr = found; break; }
         console.log(`${found.url}: skip (${reason})`);
+        skipped++;
       }
-      if (!pr) break;
+      if (!pr) {
+        console.log(`scan 終了 ${new Date().toISOString()}: レビュー ${reviewed} 件、見送り ${skipped} 件`);
+        break;
+      }
       // Recorded before the review, so a review that fails is not retried every hour on the same head.
       started[pr.url] = pr.head;
       await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
       console.log(`${pr.url}: review ${pr.head.slice(0, 12)}`);
       console.log(`${pr.url}: exit ${await review(pr.url, values)}`);
+      reviewed++;
     }
   } finally {
     await rm(lock, { force: true });

@@ -220,7 +220,8 @@ node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外
 - 同じ head で一度レビューを始めた PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
 - 1件ずつ順にレビューし、次の PR に進む前に検索し直します（待っている間に push や CI の失敗があった PR は始めません）。1件90分で打ち切ります。前の回が終わっていなければ、次の回は何もしません。
 - install は、`claude`・`gh`・`node` が通る端末から実行してください。その時点の PATH を plist に写します。組織名は手元の plist（`~/Library/LaunchAgents/io.github.yuki777.review-team.scan.plist`）にだけ入ります。
-- ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。
+- scan は最後に `scan 終了 <時刻>: レビュー M 件、見送り N 件` を1行出します。依頼が無いときも出ます。
+- ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。PR ごとのレビューのログと、毎時の実行の出力（`scan.log`）です。
 
 ## リリース
 
