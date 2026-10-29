@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.35](https://github.com/yuki777/review-team/compare/v0.1.34...v0.1.35) - 2026-10-29
+
+- scan の出力の各行の先頭にローカル時刻を付ける by @yuki777 in https://github.com/yuki777/review-team/pull/114
+
 ## [v0.1.34](https://github.com/yuki777/review-team/compare/v0.1.33...v0.1.34) - 2026-10-29
 
 - スキルのディレクトリがシンボリックリンクでも scan-prs.mjs と watch-pr.mjs が動くようにする by @yuki777 in https://github.com/yuki777/review-team/pull/112
