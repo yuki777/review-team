@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.32](https://github.com/yuki777/review-team/compare/v0.1.31...v0.1.32) - 2026-10-29
+
+- README の scan-prs の例を effort 付きのチームにする by @yuki777 in https://github.com/yuki777/review-team/pull/108
+
 ## [v0.1.31](https://github.com/yuki777/review-team/compare/v0.1.30...v0.1.31) - 2026-10-29
 
 - ウォッチが解除・停止されたら、登録した対話のセッションで知らせる by @yuki777 in https://github.com/yuki777/review-team/pull/106
