@@ -8,7 +8,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 
 - Node.js 22 以降、macOS または Linux
 - 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`・`grok`・`agy`（Antigravity CLI）
-- 既定の agy は `gemini-4-argon-high` を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新するか「Gemini は外して」と頼んでください
+- 既定の agy は `gemini-4-argon`（effort high）を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新するか「Gemini は外して」と頼んでください
 
 ## インストール
 
@@ -124,7 +124,7 @@ node ~/.agents/skills/review-team/scripts/watch-pr.mjs uninstall   # 見回り�
 既定から Grok を外し、Claude・Codex・Gemini の3人にする場合:
 
 ```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-4-argon-high:high [PR-URL or PR-Number or Branch]
+/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-4-argon:high [PR-URL or PR-Number or Branch]
 ```
 
 既定の Grok は `grok-4.7-build-fast` です。料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。
@@ -176,20 +176,23 @@ ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
 review-team <PR-URL>                  # 既定のレビュアー
 review-team --team opus-sol <PR-URL>  # チームを指定
 review-team --team sol-opus <PR-URL>  # メンバーは順不同
+review-team --team opus:max-sol:xhigh <PR-URL>  # メンバーごとに effort を指定
 review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
 review-team --print <PR-URL>          # 画面を出さずに claude -p で動かす（launchd などから）
 ```
 
-チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になり、effort はすべて high です。
+チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になります。effort は既定で high で、メンバー名の後ろに `:<effort>` を付けると変えられます（例: `opus:max-sol:xhigh-grok-argon:low`）。使える effort は CLI とモデルによって違い、表にない値を指定すると起動前にエラーで止まります。主担当の claude 自身の effort（xhigh）はこの指定では変わりません。
 
-| メンバー | レビュアー |
-| --- | --- |
-| `opus` | `claude:claude-opus-5-5` |
-| `fable` | `claude:claude-fable-5-1` |
-| `sol` | `codex:gpt-6.1-sol` |
-| `astra` | `codex:gpt-6-astra` |
-| `grok` | `grok:grok-4.7-build-fast` |
-| `argon` | `agy:gemini-4-argon-high` |
+| メンバー | レビュアー | 使える effort |
+| --- | --- | --- |
+| `opus` | `claude:claude-opus-5-5` | low / medium / high / xhigh / max |
+| `fable` | `claude:claude-fable-5-1` | low / medium / high / xhigh / max |
+| `sol` | `codex:gpt-6.1-sol` | low / medium / high / xhigh / max / ultra |
+| `astra` | `codex:gpt-6-astra` | low / medium / high / xhigh / max / ultra |
+| `grok` | `grok:grok-4.7-build-fast` | low / medium / high / xhigh |
+| `argon` | `agy:gemini-4-argon` | low / medium / high |
+
+agy のモデル ID には `gemini-4-argon-high` のように effort が入ったものもありますが、effort と食い違うと agy がエラーにするので、`argon` は effort なしのモデル ID に effort を別に渡します。
 
 たとえば `opus-sol-grok-argon` は既定と同じ4人、`fable-astra` は Claude Fable 5.1 と Codex GPT 6 Astra の2人です。一覧は `review-team --help` で出ます。
 

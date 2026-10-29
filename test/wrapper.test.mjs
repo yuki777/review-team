@@ -48,8 +48,10 @@ test('チーム名はメンバー名を-でつないだもので、書いた順�
     'opus-sol': ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high'],
     'sol-opus': ['codex:gpt-6.1-sol:high', 'claude:claude-opus-5-5:high'],
     'opus-sol-grok-argon': ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high',
-      'grok:grok-4.7-build-fast:high', 'agy:gemini-4-argon-high:high'],
+      'grok:grok-4.7-build-fast:high', 'agy:gemini-4-argon:high'],
     'fable-astra': ['claude:claude-fable-5-1:high', 'codex:gpt-6-astra:high'],
+    'opus:max-sol:ultra-grok:xhigh-argon:low': ['claude:claude-opus-5-5:max', 'codex:gpt-6.1-sol:ultra',
+      'grok:grok-4.7-build-fast:xhigh', 'agy:gemini-4-argon:low'],
   };
   for (const [team, reviewers] of Object.entries(cases)) {
     for (const args of [['--team', team, prUrl], [`--team=${team}`, prUrl], [prUrl, '--team', team]]) {
@@ -86,10 +88,12 @@ test('--printはclaude -pで起動し、ほかの引数は変えない', async (
   }
 });
 
-test('不明なメンバー・重複・空のメンバー・引数の誤りは、claudeを起動せずに終了コード1で止まる', async () => {
+test('不明なメンバー・重複・空のメンバー・使えないeffort・引数の誤りは、claudeを起動せずに終了コード1で止まる', async () => {
   for (const args of [
     ['--team', 'opus-gemini', prUrl], ['--team', 'opus-opus', prUrl], ['--team', 'opus--sol', prUrl], ['--team', '-opus', prUrl],
-    ['--team', 'opus-*', prUrl], ['--team', 'opus', 'sol', prUrl], ['opus-sol', prUrl, prUrl], ['--team'], ['--effort', 'max', prUrl], [],
+    ['--team', 'opus-*', prUrl],
+    ['--team', 'grok:max', prUrl], ['--team', 'argon:xhigh', prUrl], ['--team', 'opus:bogus', prUrl], ['--team', 'opus:', prUrl],
+    ['--team', 'opus:max:x', prUrl], ['--team', ':high', prUrl], ['--team', 'opus:max-opus', prUrl], ['--team', 'opus', 'sol', prUrl], ['opus-sol', prUrl, prUrl], ['--team'], ['--effort', 'max', prUrl], [],
   ]) {
     const { code, argv } = await run(args);
     assert.equal(code, 1, args.join(' '));

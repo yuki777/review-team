@@ -71,7 +71,7 @@ for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$O
 
 レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` / `grok` / `agy`（Antigravity CLI）で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude・Codex・Grok（`grok:grok-4.7-build-fast:high`）・Antigravity（`agy:gemini-4-argon-high:high`）の4人。利用者が「Grok は外して」「Gemini は外して」のように頼んだ場合は、そのレビュアーを除いた既定の3人を指定する。agy のモデル ID は `agy models` で確かめられる。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude・Codex・Grok（`grok:grok-4.7-build-fast:high`）・Antigravity（`agy:gemini-4-argon:high`）の4人。利用者が「Grok は外して」「Gemini は外して」のように頼んだ場合は、そのレビュアーを除いた既定の3人を指定する。agy のモデル ID は `agy models` で確かめられる。agy は `gemini-4-argon-high` のように effort 付きのモデル ID と食い違う effort を渡すとエラーにするので、effort を変えるときは effort なしのモデル ID（`gemini-4-argon`）を使う。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
 
 利用者に伝えるべき注意:
 
