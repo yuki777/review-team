@@ -205,10 +205,14 @@ agy のモデル ID には `gemini-4-argon-high` のように effort が入っ�
 同梱の `scripts/scan-prs.mjs` は、指定した組織で自分宛てにレビュー依頼が来た PR を探し、上の `review-team` コマンドを `--print`（画面を出さない `claude -p`）で1件ずつ動かします。launchd に登録すると、毎時0分に動きます。スリープ中に逃した回は、起きたときに1回動きます。
 
 ```sh
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs install --org <組織> --team opus-sol --act-on-only
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> --team opus-sol --act-on-only  # 今すぐ1回
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> --team opus:xhigh-sol:xhigh --act-on-only  # 今すぐ1回
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs install --org <組織> --team opus:xhigh-sol:xhigh --act-on-only  # 毎時0分に登録
+node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外す
 ```
+
+- `--team` は `review-team` コマンドと同じ書き方で、`:<effort>` も付けられます（上の例は Opus と Sol を xhigh で動かします）。`--team` は登録時には確かめないので、書き方を誤ると毎時の実行がログにだけ失敗を残します。登録の前に `scan` を1回動かして確かめてください。
+- 設定を変えるときは `install` をもう一度実行します。前の登録と入れ替わります。
+- `scan-prs.mjs` は同じディレクトリの `review-team` を呼びます。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
 
 - 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリは除きます）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
 - コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
