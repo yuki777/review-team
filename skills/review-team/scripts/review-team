@@ -22,14 +22,18 @@ usage: review-team [--team <TEAM>] [--act-on-only] [--print] <PR-URL>
        review-team --version
 
 TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
+メンバー名の後ろに :<effort> を付けると、そのレビュアーの reasoning effort を変えられる（省略時は high）。
+例: opus:max-sol:xhigh-grok-argon:low
+主担当の claude 自身の effort（xhigh）は変わらない。
 
 Members:
-  opus   claude:claude-opus-5-5
-  fable  claude:claude-fable-5-1
-  sol    codex:gpt-6.1-sol
-  astra  codex:gpt-6-astra
-  grok   grok:grok-4.7-build-fast
-  argon  agy:gemini-4-argon-high
+  名前   CLI:モデル                使える effort
+  opus   claude:claude-opus-5-5    low medium high xhigh max
+  fable  claude:claude-fable-5-1   low medium high xhigh max
+  sol    codex:gpt-6.1-sol         low medium high xhigh max ultra
+  astra  codex:gpt-6-astra         low medium high xhigh max ultra
+  grok   grok:grok-4.7-build-fast  low medium high xhigh
+  argon  agy:gemini-4-argon        low medium high
 
 Teams (例):
   opus-sol             Claude Opus 5.5 + Codex GPT 6.1 Sol
@@ -37,6 +41,7 @@ Teams (例):
   opus-sol-argon       opus-sol + Gemini (agy)
   opus-sol-grok-argon  既定と同じ4人
   fable-astra          Claude Fable 5.1 + Codex GPT 6 Astra
+  opus:max-sol:xhigh   Opus は max、Sol は xhigh
 
 --team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
 レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
@@ -46,15 +51,16 @@ Teams (例):
 USAGE
 }
 
-# チームのメンバー名を --reviewer <cli>:<model>:<effort> に対応付ける
+# チームのメンバー名を <cli>:<model> と、使える effort に対応付ける
+# （effort は claude 2.1.312・codex 0.164.0・grok 1.0.70・agy 1.4.8 で確かめた値）
 member_spec() {
   case "$1" in
-    opus)  echo "claude:claude-opus-5-5:high" ;;
-    fable) echo "claude:claude-fable-5-1:high" ;;
-    sol)   echo "codex:gpt-6.1-sol:high" ;;
-    astra) echo "codex:gpt-6-astra:high" ;;
-    grok)  echo "grok:grok-4.7-build-fast:high" ;;
-    argon) echo "agy:gemini-4-argon-high:high" ;;
+    opus)  echo "claude:claude-opus-5-5 low medium high xhigh max" ;;
+    fable) echo "claude:claude-fable-5-1 low medium high xhigh max" ;;
+    sol)   echo "codex:gpt-6.1-sol low medium high xhigh max ultra" ;;
+    astra) echo "codex:gpt-6-astra low medium high xhigh max ultra" ;;
+    grok)  echo "grok:grok-4.7-build-fast low medium high xhigh" ;;
+    argon) echo "agy:gemini-4-argon low medium high" ;;
     *) return 1 ;;
   esac
 }
@@ -117,16 +123,24 @@ fi
 reviewer_args=""
 if [ -n "$TEAM" ]; then
   case "$TEAM" in
-    *[!a-z-]*|-*|*-|*--*) fail "不明なチームです: $TEAM" ;;
+    *[!a-z:-]*|-*|*-|*--*) fail "不明なチームです: $TEAM" ;;
   esac
   seen=" "
-  for member in ${TEAM//-/ }; do
+  for item in ${TEAM//-/ }; do
+    member="${item%%:*}"
+    effort=high
+    case "$item" in *:*) effort="${item#*:}" ;; esac
     spec="$(member_spec "$member")" || fail "不明なメンバーです: $member（チーム: $TEAM）"
+    efforts=" ${spec#* } "
+    case "$efforts" in
+      *" $effort "*) ;;
+      *) fail "$member の effort に「$effort」は使えません（使える effort:${efforts% }）" ;;
+    esac
     case "$seen" in
       *" $member "*) fail "メンバーが重複しています: $member（チーム: $TEAM）" ;;
     esac
     seen="$seen$member "
-    reviewer_args="$reviewer_args --reviewer $spec"
+    reviewer_args="$reviewer_args --reviewer ${spec%% *}:$effort"
   done
 fi
 
