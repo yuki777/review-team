@@ -447,3 +447,57 @@ test('deferはレビュー済みのcommitなしで登録し、tickが最初の�
   assert.equal(s.rereviews, 0);
   assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort high .* --rereview 0\/0 /);
 });
+
+test('waitはtickかremoveが解除したときに理由を出して終わり、解除のあとに起動しても理由を出す', async () => {
+  const t = await setup();
+  const wait = () => execFileAsync(process.execPath, [watcher, 'wait', prUrl],
+    { env: { ...process.env, PATH: `${t.dir}/bin:${process.env.PATH}`, XDG_STATE_HOME: join(t.dir, 'state'), REVIEW_TEAM_WAIT_POLL: '0.05' } })
+    .then(({ stdout }) => JSON.parse(stdout));
+  await writeFile(t.diff, 'diff\n');
+  const cases = [
+    ['merged', () => t.setPr({ state: 'MERGED' }).then(t.tick)],
+    ['closed', () => t.setPr({ state: 'CLOSED' }).then(t.tick)],
+    ['expired', () => t.tick(), ['--ttl-hours', '0']],
+    ['limit', () => t.tick(), ['--max-rereviews', '0']],
+    ['removed', () => t.cli('remove', prUrl)],
+  ];
+  for (const [reason, end, extra = []] of cases) {
+    await t.setPr({ headRefOid: 'aaa' });
+    const registered = await t.register('aaa', extra);
+    assert.equal(registered.registered, true);
+    const waiting = wait();
+    await end();
+    const result = await waiting;
+    assert.equal(result.reason, reason);
+    assert.equal(result.pr, prUrl);
+    assert.equal(result.expiresAt, registered.expiresAt);
+    assert.equal(result.maxRereviews, registered.maxRereviews);
+    // A wait started again after the removal reports the same reason at once.
+    assert.equal((await wait()).reason, reason);
+  }
+  // Registering the PR again clears the old reason, so a wait sees the new watch.
+  await t.setPr({ headRefOid: 'aaa' });
+  await t.register('aaa');
+  await t.cli('remove', prUrl);
+  await t.register('aaa');
+  assert.equal(await stat(`${t.stateFile}.removed`).catch(() => null), null);
+  await t.setPr({ state: 'MERGED' });
+  const waiting = wait();
+  await t.tick();
+  assert.equal((await waiting).reason, 'merged');
+});
+
+test('waitは失敗で停止したときにも終わり、未登録のPRではすぐ失敗する', async () => {
+  const t = await setup();
+  const wait = () => execFileAsync(process.execPath, [watcher, 'wait', prUrl],
+    { env: { ...process.env, XDG_STATE_HOME: join(t.dir, 'state'), REVIEW_TEAM_WAIT_POLL: '0.05' } });
+  await assert.rejects(wait(), error => error.code === 2 && /ウォッチに登録されていません/.test(error.stderr));
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff\n');
+  await t.register('aaa');
+  const waiting = wait();
+  await writeFile(t.stateFile, JSON.stringify({ ...await t.state(), failures: 2 }));
+  assert.match(await t.tick(), /stop \(failed\)/);
+  assert.equal(JSON.parse((await waiting).stdout).reason, 'failed');
+  assert.match((await t.cli('list')).stdout, /停止\(failed\)/);
+});

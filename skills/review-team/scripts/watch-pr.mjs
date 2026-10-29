@@ -28,6 +28,8 @@ node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なもの�
 node watch-pr.mjs list       ウォッチ中と、失敗で停止したPRを表示する
 node watch-pr.mjs remove <PR-URL>
                              ウォッチをやめる
+node watch-pr.mjs wait <PR-URL>
+                             ウォッチが解除されるか失敗で停止するまで待ち、理由を1行のJSONで出す（状態ファイルだけを見る）
 node watch-pr.mjs install    launchd に1分ごとの tick を登録する（macOS）。Linux では crontab の行を表示する
 node watch-pr.mjs uninstall  launchd の登録を外す
 
@@ -109,6 +111,9 @@ async function locked(path) {
   return Boolean(pid) && alive(pid);
 }
 
+// Why tick or remove ended a watch, kept beside the state file for wait. Registering the PR again clears it.
+const removedPath = file => `${file}.removed`;
+
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 
 // Reads the watch for the PR of a runner output, and the state a new watch would start from.
@@ -151,6 +156,7 @@ async function record(values) {
   Object.assign(state, { lastReviewedCommit: manifest.repository.commit, lastReviewedDiffSha256: sha256(diff),
     lastPostedAt: now.toISOString(), failures: 0, supersededRuns: 0 });
   await writeState(file, state);
+  if (!previous) await rm(removedPath(file), { force: true });
   const schedule = await ensureInstalled();
   console.log(JSON.stringify({ registered: !previous, state: file, schedule, ...state }, null, 2));
 }
@@ -163,6 +169,7 @@ async function defer(values) {
   const { file, previous, state } = loaded;
   if (!previous) Object.assign(state, { lastReviewedCommit: null, lastReviewedDiffSha256: null, lastPostedAt: null });
   await writeState(file, state);
+  if (!previous) await rm(removedPath(file), { force: true });
   const schedule = await ensureInstalled();
   console.log(JSON.stringify({ registered: !previous, deferred: true, state: file, schedule, ...state }, null, 2));
 }
@@ -221,7 +228,7 @@ async function tick() {
       }
       if (decision.action !== 'stopped') console.log(`${state.pr}: ${decision.action}${decision.reason ? ` (${decision.reason})` : ''}`);
       if (decision.action === 'remove') {
-        await deleteWatch(file);
+        await deleteWatch(file, state, decision.reason);
       } else if (decision.action === 'stop') {
         await updateState(file, { stoppedReason: decision.reason, stoppedAt: new Date().toISOString() });
       } else if (decision.action === 'observe') {
@@ -355,11 +362,40 @@ async function list() {
   }
 }
 
-const deleteWatch = file => rm(file, { force: true });
+// The record is written before the state file goes, so wait never sees a watch gone without its reason.
+async function deleteWatch(file, { pr, expiresAt, maxRereviews }, reason) {
+  await writeState(removedPath(file), { pr, reason, removedAt: new Date().toISOString(), expiresAt, maxRereviews });
+  await rm(file, { force: true });
+}
 
 async function remove(url) {
-  await deleteWatch(statePath(url));
+  const file = statePath(url);
+  const state = await readState(file).catch(() => null);
+  // A state file that cannot be read is still removed, so it cannot be left behind out of list's sight.
+  if (state) await deleteWatch(file, state, 'removed');
+  else await rm(file, { force: true });
   console.log(`ウォッチをやめました: ${url}`);
+}
+
+// Waits until the watch is removed or stopped by a failure. A wait started after the removal reports it at once,
+// so a wait stopped by its host can simply be started again.
+async function wait(url) {
+  const file = statePath(url);
+  const pollMs = Number(process.env.REVIEW_TEAM_WAIT_POLL || 30) * 1000;
+  for (;;) {
+    const state = await readState(file).catch(() => null);
+    if (state?.stoppedReason === 'failed') {
+      console.log(JSON.stringify({ pr: url, reason: 'failed', stoppedAt: state.stoppedAt }));
+      return;
+    }
+    if (!state) {
+      const removed = await readState(removedPath(file)).catch(() => null);
+      if (!removed) throw new Error(`ウォッチに登録されていません: ${url}`);
+      console.log(JSON.stringify(removed));
+      return;
+    }
+    await new Promise(done => setTimeout(done, pollMs));
+  }
 }
 
 const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
@@ -440,6 +476,7 @@ async function main() {
   if (command === 'run') return run(arg);
   if (command === 'list') return list();
   if (command === 'remove') return remove(arg);
+  if (command === 'wait') return wait(arg);
   if (command === 'install') {
     const result = await install();
     console.log(result.installed ? `1分ごとの tick を登録しました: ${result.plist}`

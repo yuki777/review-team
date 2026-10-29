@@ -106,12 +106,14 @@ PR をレビューしたあとに「PR にコメントして」と頼むと、�
 - 再レビューは最初のレビューと同じレビュアーで動きます。最初に外したレビュアーは外れたままです。
 - 再レビューは1つの PR につき5回までです（`--max-rereviews` を付けた登録では、その回数）。PR のマージかクローズ、登録から6時間、再レビューの上限のどれかで解除され、`list` から消えます。上限では、上限の回を投稿した次の見回りで解除します（最後の回が失敗しても回数に数えます）。失敗が2回続いたときは停止し、`list` に `停止(failed)` として残ります。
 - 再レビューが90分で終わらなければ打ち切り、失敗として数えます。
+- 見回りは launchd（または cron）で動くので、`--watch` を付けたセッションを閉じてもウォッチは続きます。Claude Code の対話のセッション（端末・デスクトップアプリ・VS Code）を開いたままにしておけば、ウォッチが解除または停止されたときに、その理由をそのセッションで知らせます。
 
 確認と解除:
 
 ```sh
 node ~/.agents/skills/review-team/scripts/watch-pr.mjs list
 node ~/.agents/skills/review-team/scripts/watch-pr.mjs remove <PR-URL>
+node ~/.agents/skills/review-team/scripts/watch-pr.mjs wait <PR-URL>     # 解除か停止まで待って理由を出す
 node ~/.agents/skills/review-team/scripts/watch-pr.mjs uninstall   # 見回りそのものを外す
 ```
 
