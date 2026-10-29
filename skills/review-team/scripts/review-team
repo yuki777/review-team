@@ -26,7 +26,8 @@ TEAM はメンバー名を - でつないだもの（順不同）。書いた順
 例: opus:max-sol:xhigh-grok-argon:low
 主担当の claude 自身の effort（xhigh）は変わらない。
 
-Members:      CLI:モデル                 使える effort
+Members:
+  名前   CLI:モデル                使える effort
   opus   claude:claude-opus-5-5    low medium high xhigh max
   fable  claude:claude-fable-5-1   low medium high xhigh max
   sol    codex:gpt-6.1-sol         low medium high xhigh max ultra
@@ -133,7 +134,7 @@ if [ -n "$TEAM" ]; then
     efforts=" ${spec#* } "
     case "$efforts" in
       *" $effort "*) ;;
-      *) fail "$member の effort に $effort は使えません（使える effort:${efforts% }）" ;;
+      *) fail "$member の effort に「$effort」は使えません（使える effort:${efforts% }）" ;;
     esac
     case "$seen" in
       *" $member "*) fail "メンバーが重複しています: $member（チーム: $TEAM）" ;;
