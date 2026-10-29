@@ -53,9 +53,18 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
   for (const [n, reason] of [[2, 'conflict'], [3, 'mergeable unknown'], [4, 'ci failed'], [5, 'ci failed'], [6, 'ci running'], [7, 'ci running']]) {
     assert.match(stdout, new RegExp(`${url(n)}: skip \\(${reason}\\)`));
   }
+  assert.match(stdout, /scan 終了 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}: レビュー 2 件、見送り 6 件\n$/);
   const team = '--reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high';
   assert.deepEqual(await reviews(), [1, 8].map(n =>
     `-p --effort xhigh --permission-mode auto /review-team --comment --watch --act-on-only ${team} ${url(n)}`));
+});
+
+test('依頼が無くても、終了の時刻と件数を1行出す', async () => {
+  const { setPrs, scan, reviews } = await setup();
+  await setPrs([]);
+  const { stdout } = await scan();
+  assert.match(stdout, /^scan 終了 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}: レビュー 0 件、見送り 0 件\n$/);
+  assert.deepEqual(await reviews(), []);
 });
 
 test('同じheadは失敗しても次の回でやり直さず、新しいheadならレビューする。ウォッチ中のPRは見送る', async () => {
