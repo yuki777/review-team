@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.40](https://github.com/yuki777/review-team/compare/v0.1.39...v0.1.40) - 2026-11-02
+
+- README の使い方を /review-team と review-team コマンドの2つに絞って短くする by @yuki777 in https://github.com/yuki777/review-team/pull/128
+
 ## [v0.1.39](https://github.com/yuki777/review-team/compare/v0.1.38...v0.1.39) - 2026-11-02
 
 - README の scan の説明を review-team --loop に寄せ、launchd の手順を消す by @yuki777 in https://github.com/yuki777/review-team/pull/125
