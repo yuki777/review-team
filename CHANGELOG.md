@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.37](https://github.com/yuki777/review-team/compare/v0.1.36...v0.1.37) - 2026-11-02
+
+- scan で Renovate が作成した PR を対象から除く by @yuki777 in https://github.com/yuki777/review-team/pull/119
+
 ## [v0.1.36](https://github.com/yuki777/review-team/compare/v0.1.35...v0.1.36) - 2026-11-02
 
 - ログで PR URL の直後に「:」を付けず、クリックで開けるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/116
