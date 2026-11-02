@@ -15,9 +15,10 @@ const reviewTimeoutMs = () => Number(process.env.REVIEW_TEAM_SCAN_TIMEOUT || 540
 const label = 'io.github.yuki777.review-team.scan';
 const help = `review-team scan: 自分宛てにレビュー依頼が来たPRを探し、review-team でレビューして投稿します。
 
-node scan-prs.mjs scan --org <組織> [--team <TEAM>] [--act-on-only]
+node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--act-on-only]
     依頼が来ているPRを1件ずつ順に review-team --print で動かす
-node scan-prs.mjs install --org <組織> [--team <TEAM>] [--act-on-only]
+    --repo を付けると、組織全体ではなく、その組織のそのリポジトリだけを探す（複数回指定できる）
+node scan-prs.mjs install --org <組織> [--repo <名前>]... [--team <TEAM>] [--act-on-only]
     launchd に毎時0分の scan を登録する（macOS）
 node scan-prs.mjs uninstall  launchd の登録を外す
 
@@ -32,8 +33,12 @@ const startedPath = () => join(scanDir(), 'started.json');
 const query = `query($q: String!) { search(type: ISSUE, first: 100, query: $q) { nodes { ... on PullRequest {
   url headRefOid mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }`;
 
-async function searchPrs(org) {
-  const q = `is:pr is:open draft:false archived:false -author:app/renovate user-review-requested:@me org:${org}`;
+// Several repo: qualifiers are ORed by GitHub search.
+const scope = values => values.repo?.length
+  ? values.repo.map(name => `repo:${values.org}/${name}`).join(' ') : `org:${values.org}`;
+
+async function searchPrs(values) {
+  const q = `is:pr is:open draft:false archived:false -author:app/renovate user-review-requested:@me ${scope(values)}`;
   const out = JSON.parse(await gh(['api', 'graphql', '-f', `query=${query}`, '-f', `q=${q}`]));
   return out.data.search.nodes.map(pr => ({ url: pr.url, head: pr.headRefOid, mergeable: pr.mergeable,
     ci: pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? null }));
@@ -60,10 +65,18 @@ async function review(url, values) {
   const code = await new Promise(done => {
     const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', log.fd, log.fd], detached: true });
     const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
+    // The review runs in its own process group, so Ctrl-C does not reach it; stop it with the scan.
+    const interrupt = signal => { kill('SIGKILL'); process.kill(process.pid, signal); };
+    const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+    for (const signal of signals) process.once(signal, interrupt);
     let force;
     let stopping = false;
     const timer = setTimeout(() => { stopping = true; kill('SIGTERM'); force = setTimeout(() => kill('SIGKILL'), 30000); }, reviewTimeoutMs());
-    const finish = result => { clearTimeout(timer); clearTimeout(force); done(result); };
+    const finish = result => {
+      clearTimeout(timer); clearTimeout(force);
+      for (const signal of signals) process.off(signal, interrupt);
+      done(result);
+    };
     child.on('error', () => finish(-1));
     child.on('exit', (exitCode, signal) => {
       // Children that ignored SIGTERM may outlive the lead; kill the group before the next PR starts.
@@ -90,7 +103,7 @@ async function scan(values) {
     for (;;) {
       let pr;
       let skipped = 0;
-      for (const found of await searchPrs(values.org)) {
+      for (const found of await searchPrs(values)) {
         const reason = await skipReason(found, started);
         if (!reason) { pr = found; break; }
         say(`${found.url} skip (${reason})`);
@@ -100,11 +113,12 @@ async function scan(values) {
         say(`scan 終了: レビュー ${reviewed} 件、見送り ${skipped} 件`);
         break;
       }
-      // Recorded before the review, so a review that fails is not retried every hour on the same head.
-      started[pr.url] = pr.head;
-      await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
       say(`${pr.url} review ${pr.head.slice(0, 12)}`);
       say(`${pr.url} exit ${await review(pr.url, values)}`);
+      // Recorded even when the review fails, so it is not retried every hour on the same head.
+      // A scan stopped by a signal exits before this, so that PR is reviewed again by the next scan.
+      started[pr.url] = pr.head;
+      await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
       reviewed++;
     }
   } finally {
@@ -116,6 +130,7 @@ const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.pli
 
 function plist(values) {
   const args = [process.execPath, script, 'scan', '--org', values.org,
+    ...(values.repo ?? []).flatMap(name => ['--repo', name]),
     ...(values.team ? ['--team', values.team] : []), ...(values['act-on-only'] ? ['--act-on-only'] : [])];
   const log = escapeXml(join(scanDir(), 'logs', 'scan.log'));
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -159,11 +174,14 @@ async function uninstall() {
 
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    org: { type: 'string' }, team: { type: 'string' }, 'act-on-only': { type: 'boolean' }, help: { type: 'boolean' },
+    org: { type: 'string' }, repo: { type: 'string', multiple: true }, team: { type: 'string' }, 'act-on-only': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   const [command] = positionals;
   if (values.help || !command) { console.log(help); return; }
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからの scan は禁止です。');
+  for (const name of values.repo ?? []) {
+    if (!/^[\w.-]+$/.test(name)) throw new Error(`--repo には組織の中のリポジトリ名だけを指定してください: ${name}`);
+  }
   if (command === 'scan') return scan(values);
   if (command === 'install') return install(values);
   if (command === 'uninstall') return uninstall();

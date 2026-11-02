@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-# シンボリックリンク経由でも、実体の隣の VERSION を読む（readlink -f のない古い macOS でも動くようにたどる）
-version() {
+# シンボリックリンク経由でも、実体のあるディレクトリを返す（readlink -f のない古い macOS でも動くようにたどる）
+script_dir() {
   local path="${BASH_SOURCE[0]}" target
   while [ -L "$path" ]; do
     target="$(readlink "$path")"
@@ -12,13 +12,18 @@ version() {
       *) path="$(dirname "$path")/$target" ;;
     esac
   done
-  echo "v$(cat "$(dirname "$path")/../VERSION")"
+  dirname "$path"
+}
+
+version() {
+  echo "v$(cat "$(script_dir)/../VERSION")"
 }
 
 usage() {
   echo "review-team $(version)" >&2
   cat >&2 <<'USAGE'
 usage: review-team [--team <TEAM>] [--act-on-only] [--print] <PR-URL>
+       review-team --loop --org <組織> [--repo <名前>]... [--interval <分>] [--team <TEAM>] [--act-on-only]
        review-team --version
 
 TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -48,6 +53,11 @@ Teams (例):
 以後の push は自動で再レビューされる（--watch）。
 --act-on-only を付けると、PR には Act On の指摘だけを投稿する（再レビューも同じ）。
 --print を付けると、画面を出さずに claude -p で動かし、終わるまで待つ（launchd などから呼ぶとき）。
+
+--loop を付けると、URL の代わりに、自分宛てにレビュー依頼が来た PR を探してレビューする scan
+（scripts/scan-prs.mjs scan）を前面で繰り返す。scan が終わるたびに --interval 分（既定 15）待って、
+また scan する。Ctrl-C で止まる。--org は必須。--repo は --org の中のリポジトリ名（owner/ を付けない）で、
+複数回指定でき、指定するとそのリポジトリだけを探す。--org・--repo・--interval は「--org 名前」の形だけ受け付ける。
 USAGE
 }
 
@@ -75,6 +85,10 @@ TEAM=""
 REVIEW_TARGET=""
 ACT_ON_ONLY=""
 PRINT=""
+LOOP=""
+ORG=""
+REPOS=""
+INTERVAL=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,6 +110,28 @@ while [ $# -gt 0 ]; do
       PRINT=1
       shift
       ;;
+    --loop)
+      LOOP=1
+      shift
+      ;;
+    --org)
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--org に組織名を指定してください"
+      ORG="$2"
+      shift 2
+      ;;
+    --repo)
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--repo にリポジトリ名を指定してください"
+      case "$2" in
+        *[!A-Za-z0-9._-]*|-*) fail "--repo には --org の中のリポジトリ名だけを指定してください: $2" ;;
+      esac
+      REPOS="$REPOS --repo $2"
+      shift 2
+      ;;
+    --interval)
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--interval に分を指定してください"
+      INTERVAL="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -115,9 +151,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -z "$REVIEW_TARGET" ]; then
-  usage
-  exit 1
+if [ -n "$LOOP" ]; then
+  [ -z "$REVIEW_TARGET" ] || fail "--loop と URL は同時に指定できません"
+  [ -z "$PRINT" ] || fail "--loop と --print は同時に指定できません"
+  [ -n "$ORG" ] || fail "--loop には --org が必要です"
+  INTERVAL="${INTERVAL:-15}"
+  case "$INTERVAL" in
+    ''|0*|*[!0-9]*) fail "--interval は1以上の整数（分）で指定してください: $INTERVAL" ;;
+  esac
+else
+  [ -z "$ORG$REPOS$INTERVAL" ] || fail "--org・--repo・--interval は --loop と一緒に指定してください"
+  if [ -z "$REVIEW_TARGET" ]; then
+    usage
+    exit 1
+  fi
 fi
 
 reviewer_args=""
@@ -141,6 +188,15 @@ if [ -n "$TEAM" ]; then
     esac
     seen="$seen$member "
     reviewer_args="$reviewer_args --reviewer ${spec%% *}:$effort"
+  done
+fi
+
+if [ -n "$LOOP" ]; then
+  scanner="$(script_dir)/scan-prs.mjs"
+  while :; do
+    # scan が失敗しても（gh の一時的な失敗など）、次の回にまた試す
+    node "$scanner" scan --org "$ORG"$REPOS ${TEAM:+--team "$TEAM"}$ACT_ON_ONLY || true
+    sleep $((INTERVAL * 60))
   done
 fi
 

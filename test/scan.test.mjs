@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -124,4 +124,34 @@ test('スキルのディレクトリがシンボリックリンクでも、scan-
     const { stdout } = await execFileAsync(process.execPath, [join(dir, 'skill', 'scripts', name), '--help']);
     assert.match(stdout, /review-team/, name);
   }
+});
+
+test('--repoを付けると、組織全体ではなくそのリポジトリだけを検索する。名前以外は拒む', async () => {
+  const { env, setPrs, scan, ghLog } = await setup();
+  await setPrs([]);
+  await scan('--repo', 'widget', '--repo', 'HCAA.S4');
+  assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false -author:app\/renovate user-review-requested:@me repo:acme\/widget repo:acme\/HCAA\.S4$/m);
+  for (const name of ['other/widget', 'widget org:evil', '']) {
+    await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan', '--org', 'acme', '--repo', name], { env }),
+      /--repo には組織の中のリポジトリ名だけを指定してください/, name);
+  }
+});
+
+test('scanをSIGINTで止めると、別のプロセスグループで動いているレビューも止める', async () => {
+  const { dir, env, setPrs } = await setup();
+  await writeFile(join(dir, 'claude-hangs'), '');
+  await setPrs([{ n: 1 }]);
+  const child = spawn(process.execPath, [scanner, 'scan', '--org', 'acme'], { env: { ...env, REVIEW_TEAM_SCAN_TIMEOUT: '600' }, stdio: 'ignore' });
+  const pidFile = join(dir, 'sleep.pid');
+  for (let i = 0; i < 100 && !(await readFile(pidFile, 'utf8').catch(() => '')); i++) await new Promise(done => setTimeout(done, 50));
+  child.kill('SIGINT');
+  assert.equal(await new Promise(done => child.on('exit', (code, signal) => done(signal))), 'SIGINT');
+  const pid = Number((await readFile(pidFile, 'utf8')).trim());
+  const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  for (let i = 0; i < 40 && alive(); i++) await new Promise(done => setTimeout(done, 50));
+  assert.equal(alive(), false);
+  // The stopped review was not recorded as started, so the next scan reviews the same head again.
+  await rm(join(dir, 'claude-hangs'));
+  const { stdout } = await execFileAsync(process.execPath, [scanner, 'scan', '--org', 'acme'], { env });
+  assert.match(stdout, new RegExp(`${url(1)} review aaa`));
 });
