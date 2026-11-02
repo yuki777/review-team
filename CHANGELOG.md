@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.39](https://github.com/yuki777/review-team/compare/v0.1.38...v0.1.39) - 2026-11-02
+
+- README の scan の説明を review-team --loop に寄せ、launchd の手順を消す by @yuki777 in https://github.com/yuki777/review-team/pull/125
+
 ## [v0.1.38](https://github.com/yuki777/review-team/compare/v0.1.37...v0.1.38) - 2026-11-02
 
 - review-team に --loop を追加し、scan を前面で繰り返せるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/122
