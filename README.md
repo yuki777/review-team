@@ -32,22 +32,15 @@ npx skills remove review-team -g
 
 ## 使い方
 
-### シンプルな使い方
+### Claude Code / Codex から（`/review-team`）
 
-レビューしたいリポジトリで、AI にスキル名を付けて頼みます。
+レビューしたいリポジトリで、スキル名を付けて頼みます（Codex では `$review-team`）。
 
-| ホスト | 頼み方 |
-| --- | --- |
-| Claude Code | `/review-team このブランチの変更をレビューして` |
-| Codex | `$review-team このブランチの変更をレビューして` |
+```
+/review-team <PR-URL>
+```
 
-主担当の AI が次の順で進めます。
-
-1. 変更の意図と差分をまとめます。
-2. 対象コミットの読み取り専用クローンを作り、レビュアー全員に渡します。各レビュアーは呼び出し元やテストも読んで裏付けを取ります。
-3. レビュアーが並列で独立にレビューします（既定は Claude Opus 5.5・Codex GPT 6.1 Sol・Grok 4.7 Build Fast・Antigravity Gemini 4 Argon High、effort はすべて high）。
-   Grok は1回のレビューに10分以上かかることがあり、レビュー全体はいちばん遅いレビュアーを待ちます。
-4. 主担当が根拠を確かめ、全指摘を次の4つに分類して報告します。
+主担当の AI が、変更の意図と差分をまとめ、レビュアー全員に同じ資料と対象コミットの読み取り専用クローンを渡して並列にレビューさせ、全指摘の根拠を確かめて次の4つに分類して報告します。
 
 | 分類 | 意味 |
 | --- | --- |
@@ -56,174 +49,37 @@ npx skills remove review-team -g
 | Noted（参考） | 妥当だが、今は対応不要 |
 | Dismissed（却下） | 誤検知・前提違い・好みの差。却下の理由も残す |
 
-### オプションを付けた使い方
-
-頼むときに言葉で指定すれば、主担当がオプションに変換します。
-
-| 頼み方の例 | 内容 |
+| 引数・オプション | 内容 |
 | --- | --- |
-| `/review-team Claude Opus 5.5 と Claude Fable 5.1 と GPT 6 Astra でレビューして` | レビュアーの組み合わせを変える。同じ CLI の別モデルも並べられる |
-| `/review-team Claude は effort max でレビューして` | レビュアーごとの reasoning effort を変える |
-| `/review-team Grok は外してレビューして` | 既定から Grok を外して、Claude・Codex・Gemini の3人でレビューする |
-| `/review-team Gemini は外してレビューして` | 既定から Antigravity CLI（agy）の Gemini を外して、Claude・Codex・Grok の3人でレビューする |
-| `/review-team リポジトリは読ませずに差分だけでレビューして` | クローンを渡さず、まとめた資料だけでレビューする |
-| `/review-team コミット abc123 の状態でレビューして` | クローンするコミットを指定する |
-| `/review-team 制限時間30分でレビューして` | レビュアーごとの制限時間を変える（既定20分） |
+| `<PR-URL>` / PR 番号 / ブランチ名 | レビューする対象。省略すると、現在のブランチと既定ブランチの差分 |
+| `--comment` | プレビューの承認を待たずに PR へ投稿する（Act On と Consider をインラインコメントと総評に。Noted と Dismissed は投稿しない）。付けなくても、レビュー後に「PR にコメントして」と頼めばプレビューを見せてから投稿する |
+| `--act-on-only` | PR には Act On の指摘だけを投稿する |
+| `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、6時間、再レビュー5回のどれかで解除） |
+| `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` / `grok` / `agy` |
+| 言葉での指定 | 「Grok は外して」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-### PR に投稿する
+既定のレビュアーは Claude Opus 5.5・Codex GPT 6.1 Sol・Grok 4.7 Build Fast・Antigravity Gemini 4 Argon（effort はすべて high）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
-PR をレビューしたあとに「PR にコメントして」と頼むと、主担当が投稿する内容をプレビューで見せ、承認を待ってから PR レビューとして投稿します。Act On と Consider はインラインコメントに、差分の外を指すものは総評に入ります。Noted と Dismissed は指摘としては投稿しません。主担当が確かめて問題なしとした点（却下した指摘の根拠を含む）は、指摘がなくても、根拠の箇所と一緒に総評の「確認した点」に入ります。確認に使った Issue や仕様のリンクがあれば、総評の「一次資料」に入ります。
+### コマンドで（`review-team`）
 
-`--comment` を付けると、プレビューの承認を待たずに投稿します。
-
-```
-/review-team --comment <PR-URL>
-```
-
-`--act-on-only` を付けると、PR には Act On の指摘だけを投稿し、Consider はインラインにも総評にも出しません。主担当からの報告には Consider も残ります。`--watch` と一緒に付けると、以後の自動再レビューも Act On だけになります。ウォッチ中の PR で切り替えるときは、`watch-pr.mjs remove <PR-URL>` で外してから登録し直します。
-
-```
-/review-team --comment --act-on-only <PR-URL>
-```
-
-同じ PR に review-team が前回までに付けたスレッドがあれば、主担当が新しい head のコードで確かめ直します。直ったと確かめたものと、前回の指摘が誤りだったものは、根拠を書いた返信を付けて resolve します。一部だけ直ったものには残る点を返信し、作者が「対応しない」と返したものや直っていないものは開けたままにして、総評の「前回の指摘」に書きます。対象は自分のアカウントで review-team が始めたスレッドだけで、人やほかのボットのスレッドには触れません。resolve するスレッドと返信は、プレビューにも載ります。
-
-投稿は自分の GitHub アカウントで公開されます。古い head には投稿しません。レビュー中に PR の head が進んでいたら、push が落ち着くのを待って新しい head を同じレビュアーで自動で再レビューし（2回まで）、それを投稿します。`--comment` の同意はこの再レビューの投稿にも及びます。それでも head が動き続けるときは、`--comment` と `--watch` の両方があればウォッチに引き継いで最初の投稿を任せ、そうでなければ報告して終えます。差分の付け替えなど、head が進んだ以外の理由で止まったあとに投稿をやり直すときは、承認を待ちます。
-
-### push のたびに自動で再レビューする
-
-`--watch` を付けると、投稿したあとも PR を見回り、新しい push があれば自動で再レビューして投稿します。
-
-```
-/review-team --comment --watch <PR-URL>
-```
-
-- 最初の `--watch` で、1分ごとの見回りを launchd に登録します（`~/Library/LaunchAgents` に plist を1つ作ります）。以前の10分ごとの登録は、次の `--watch` で1分ごとに書き換わります。Linux では crontab に足す行を表示するので、以前の行と差し替えてください。
-- 見回りは LLM を使わず、GitHub の状態と記録を比べるだけです。新しい push があった PR についてだけ、`claude -p` で review-team を起動します。
-- 新しい push を見つけたら、5分たってもそのままか（push が続いていないか）を確かめてからレビューします。push からレビューが始まるまで、5〜6分ほどかかります。
-- 再レビューの最中にさらに push があると、その回は投稿せず、失敗にも再レビューの回数にも数えずに、新しい head を次の見回りに任せます。見回りは再レビューの最中も1分ごとに head を確かめ、PR への投稿を始める前に push を見つけたら、レビュアーをその場で止めます。これが続くたびに待ち時間を10分、20分と延ばします（以後は20分のまま）。
-- 差分が変わらない push（main の取り込みやリベースだけ）は見送ります。
-- 再レビューは最初のレビューと同じレビュアーで動きます。最初に外したレビュアーは外れたままです。
-- 再レビューは1つの PR につき5回までです（`--max-rereviews` を付けた登録では、その回数）。PR のマージかクローズ、登録から6時間、再レビューの上限のどれかで解除され、`list` から消えます。上限では、上限の回を投稿した次の見回りで解除します（最後の回が失敗しても回数に数えます）。失敗が2回続いたときは停止し、`list` に `停止(failed)` として残ります。
-- 再レビューが90分で終わらなければ打ち切り、失敗として数えます。
-- 見回りは launchd（または cron）で動くので、`--watch` を付けたセッションを閉じてもウォッチは続きます。Claude Code の対話のセッション（端末・デスクトップアプリ・VS Code）を開いたままにしておけば、ウォッチが解除または停止されたときに、その理由をそのセッションで知らせます。
-
-確認と解除:
+同梱の `scripts/review-team` は、どのディレクトリからでも `/review-team --comment --watch <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
 
 ```sh
-node ~/.agents/skills/review-team/scripts/watch-pr.mjs list
-node ~/.agents/skills/review-team/scripts/watch-pr.mjs remove <PR-URL>
-node ~/.agents/skills/review-team/scripts/watch-pr.mjs wait <PR-URL>     # 解除か停止まで待って理由を出す
-node ~/.agents/skills/review-team/scripts/watch-pr.mjs uninstall   # 見回りそのものを外す
+mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
+review-team <PR-URL>
 ```
 
-再レビューは利用者の GitHub アカウントで、プレビューの承認を待たずに投稿されます。再レビューのたびに、全レビュアー分の利用量がかかります。手で起動したレビューと自動の再レビューが同じ PR に同時に投稿しようとすると、後から投稿するほうが止まります。
+| 引数・オプション | 内容 |
+| --- | --- |
+| `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
+| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `review-team --help` |
+| `--act-on-only` | PR には Act On の指摘だけを投稿する |
+| `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
+| `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
+| `--repo <名前>` | `--loop` で探すリポジトリを、組織の中のこのリポジトリに絞る（複数回指定できる） |
+| `--interval <分>` | `--loop` で scan の間に待つ分（既定 15） |
 
-### レビュアーをオプションで指定する
-
-`--reviewer <cli>:<model>:<effort>` を、レビュアー1人につき1つずつ書きます。指定すると、既定のレビュアーの一覧を丸ごと置き換えます。
-
-既定から Grok を外し、Claude・Codex・Gemini の3人にする場合:
-
-```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer agy:gemini-4-argon:high [PR-URL or PR-Number or Branch]
-```
-
-既定の Grok は `grok-4.7-build-fast` です。料金が2倍の速い版で、通常の `grok-4.7` より待ち時間が短くなります。
-
-既定から Antigravity CLI（agy）の Gemini を外し、Claude・Codex・Grok の3人にする場合:
-
-```
-/review-team --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high [PR-URL or PR-Number or Branch]
-```
-
-agy で使えるモデル ID は `agy models` で確かめられます。
-
-Grok と agy は、ふだんの設定とログインのまま起動します。読み取り系ツールだけを使う設定（Grok のプロファイル、agy のカスタムエージェント）は実行のたびに一時ディレクトリへ書き出すので、事前の準備は要りません。ただし、自分で入れた MCP やルールがレビュアーの文脈に入ることがあります。
-
-Codex・Grok・Antigravity のサブスクリプションがない場合（Claude 3人）:
-
-```
-/review-team --reviewer claude:claude-fable-5-1:high --reviewer claude:claude-opus-5-5:high --reviewer claude:claude-sonnet-5-5:high [PR-URL or PR-Number or Branch]
-```
-
-既定のレビュアーの一覧は `~/.agents/skills/review-team/config/reviewers.json` にあります。このファイルは更新のたびに上書きされるので、組み合わせを変えたいときは頼むときに指定してください。
-
-### ワンライナー
-
-PR の URL を渡せば、どのディレクトリからでもレビューできます。対象リポジトリは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/repos/` に自動でクローンされ（2回目からは更新だけ）、手元のチェックアウトには触れません。
-
-```sh
-work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team <PR-URL>"
-```
-
-レビュー結果をそのまま PR に投稿するなら、`--comment` を足します。
-
-```sh
-work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"; mkdir -p "$work_root" && cd "$work_root" && claude --effort xhigh --permission-mode auto "/review-team --comment <PR-URL>"
-```
-
-### コマンドで起動する（`review-team`）
-
-同梱の `scripts/review-team` は、上のワンライナーに `--comment --watch` を付けて起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
-
-```sh
-mkdir -p ~/.local/bin
-ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
-```
-
-`~/.local/bin` が PATH に入っていなければ、シェルの設定ファイル（`~/.zshrc` など）に `export PATH="$HOME/.local/bin:$PATH"` を足します。
-
-```sh
-review-team <PR-URL>                  # 既定のレビュアー
-review-team --team opus-sol <PR-URL>  # チームを指定
-review-team --team sol-opus <PR-URL>  # メンバーは順不同
-review-team --team opus:max-sol:xhigh <PR-URL>  # メンバーごとに effort を指定
-review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
-review-team --print <PR-URL>          # 画面を出さずに claude -p で動かす（スクリプトなどから）
-review-team --loop --org <組織> --repo <リポジトリ名>  # 自分宛てのレビュー依頼を探してレビューし続ける（下を参照）
-```
-
-チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になります。effort は既定で high で、メンバー名の後ろに `:<effort>` を付けると変えられます（例: `opus:max-sol:xhigh-grok-argon:low`）。使える effort は CLI とモデルによって違い、表にない値を指定すると起動前にエラーで止まります。主担当の claude 自身の effort（xhigh）はこの指定では変わりません。
-
-| メンバー | レビュアー | 使える effort |
-| --- | --- | --- |
-| `opus` | `claude:claude-opus-5-5` | low / medium / high / xhigh / max |
-| `fable` | `claude:claude-fable-5-1` | low / medium / high / xhigh / max |
-| `sol` | `codex:gpt-6.1-sol` | low / medium / high / xhigh / max / ultra |
-| `astra` | `codex:gpt-6-astra` | low / medium / high / xhigh / max / ultra |
-| `grok` | `grok:grok-4.7-build-fast` | low / medium / high / xhigh |
-| `argon` | `agy:gemini-4-argon` | low / medium / high |
-
-agy のモデル ID には `gemini-4-argon-high` のように effort が入ったものもありますが、effort と食い違うと agy がエラーにするので、`argon` は effort なしのモデル ID に effort を別に渡します。
-
-たとえば `opus-sol-grok-argon` は既定と同じ4人、`fable-astra` は Claude Fable 5.1 と Codex GPT 6 Astra の2人です。一覧は `review-team --help` で出ます。
-
-`--comment` と `--watch` が付くので、レビュー結果はプレビューの承認を待たずに PR に投稿され、以後の push も自動で再レビューされます。
-
-### 自分宛てのレビュー依頼を見つけてレビューし続ける
-
-`review-team --loop` は、指定した組織で自分宛てにレビュー依頼が来た PR を探し、上の `review-team` コマンドを `--print`（画面を出さない `claude -p`）で1件ずつ動かす scan を、前面で繰り返します。scan が終わるたびに `--interval` 分（既定 15）待って、また scan します。Ctrl-C で止まり、実行中のレビューも一緒に止めます。止めたレビューの PR は、次の scan でもう一度レビューします。
-
-```sh
-review-team --loop --org <組織> --repo <リポジトリ名> --team opus:xhigh-sol:xhigh --act-on-only
-review-team --loop --org <組織> --interval 30  # 組織全体を、scan 終了後30分待って繰り返す
-```
-
-- `--repo <名前>` を付けると、組織全体ではなく、その組織のそのリポジトリだけを探します（`owner/` は付けません。複数回指定できます）。
-- `--team` は `review-team <PR-URL>` と同じ書き方で、`:<effort>` も付けられます（上の例は Opus と Sol を xhigh で動かします）。誤りは最初の scan の前に止まります。
-- `--org`・`--repo`・`--interval` は `--org <組織>` の形だけ受け付けます（`--org=<組織>` は使えません）。
-- レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
-- scan が失敗しても（GitHub への接続の失敗など）止まらず、次の回にまた試します。
-- scan の本体は同じディレクトリの `scripts/scan-prs.mjs` です。1回だけ動かすときは `node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> ...` を使います（`--interval` 以外は `--loop` と同じオプションを取ります）。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
-
-- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリと、Renovate（`renovate[bot]`）が作成した PR は除きます。自前のアカウントで動かす Renovate は除きません）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
-- コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
-- `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
-- 同じ head で一度レビューした PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
-- 1件ずつ順にレビューし、次の PR に進む前に検索し直します（待っている間に push や CI の失敗があった PR は始めません）。1件90分で打ち切ります。別の scan が実行中なら、その回は何もしません。
-- scan の出力の各行（エラーの行を除く）の先頭には、ローカル時刻（`YYYY-MM-DD HH:MM:SS`）が付きます。最後まで走ると `<時刻> scan 終了: レビュー M 件、見送り N 件` を1行出します（依頼が無いときも出ます）。見送りには、すでにレビューした PR は数えません。
-- PR ごとのレビューのログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。
+`--loop` は、コンフリクトや CI の失敗・実行中の PR、ウォッチ中の PR、同じ head でレビュー済みの PR を見送ります。レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
 
 ## リリース
 
