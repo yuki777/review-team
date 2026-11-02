@@ -224,10 +224,10 @@ async function tick() {
       try {
         decision = await decide(state, file);
       } catch (error) {
-        console.error(`${state.pr}: ${error.message}`);
+        console.error(`${state.pr} ${error.message}`);
         continue;
       }
-      if (decision.action !== 'stopped') console.log(`${state.pr}: ${decision.action}${decision.reason ? ` (${decision.reason})` : ''}`);
+      if (decision.action !== 'stopped') console.log(`${state.pr} ${decision.action}${decision.reason ? ` (${decision.reason})` : ''}`);
       if (decision.action === 'remove') {
         await deleteWatch(file, state, decision.reason);
       } else if (decision.action === 'stop') {

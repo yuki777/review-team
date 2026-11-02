@@ -93,7 +93,7 @@ async function scan(values) {
       for (const found of await searchPrs(values.org)) {
         const reason = await skipReason(found, started);
         if (!reason) { pr = found; break; }
-        say(`${found.url}: skip (${reason})`);
+        say(`${found.url} skip (${reason})`);
         if (reason !== 'started') skipped++;
       }
       if (!pr) {
@@ -103,8 +103,8 @@ async function scan(values) {
       // Recorded before the review, so a review that fails is not retried every hour on the same head.
       started[pr.url] = pr.head;
       await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
-      say(`${pr.url}: review ${pr.head.slice(0, 12)}`);
-      say(`${pr.url}: exit ${await review(pr.url, values)}`);
+      say(`${pr.url} review ${pr.head.slice(0, 12)}`);
+      say(`${pr.url} exit ${await review(pr.url, values)}`);
       reviewed++;
     }
   } finally {
