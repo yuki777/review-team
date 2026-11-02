@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.38](https://github.com/yuki777/review-team/compare/v0.1.37...v0.1.38) - 2026-11-02
+
+- review-team に --loop を追加し、scan を前面で繰り返せるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/122
+
 ## [v0.1.37](https://github.com/yuki777/review-team/compare/v0.1.36...v0.1.37) - 2026-11-02
 
 - scan で Renovate が作成した PR を対象から除く by @yuki777 in https://github.com/yuki777/review-team/pull/119
