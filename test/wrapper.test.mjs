@@ -129,3 +129,49 @@ test('シンボリックリンク経由で実行しても、実体の隣のVERSI
   assert.equal(code, 0);
   assert.equal(stdout, `review-team v${(await readFile(versionFile, 'utf8')).trim()}\n`);
 });
+
+// The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.
+async function loop(args) {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-loop-'));
+  const bin = join(dir, 'bin');
+  await mkdir(bin);
+  await writeFile(join(bin, 'node'), `#!/bin/sh\necho "$*" >> "${join(dir, 'node.log')}"\nexit 2\n`);
+  await writeFile(join(bin, 'sleep'), `#!/bin/sh\necho "$1" >> "${join(dir, 'sleep.log')}"\nkill $PPID\n`);
+  await writeFile(join(bin, 'claude'), `#!/bin/sh\ntouch "${join(dir, 'claude.log')}"\n`);
+  for (const name of ['node', 'sleep', 'claude']) await chmod(join(bin, name), 0o755);
+  const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') } });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const code = await new Promise(resolve => child.on('exit', (exitCode, signal) => resolve(exitCode ?? signal)));
+  const read = name => readFile(join(dir, name), 'utf8').then(text => text.trimEnd().split('\n'), () => []);
+  return { code, stderr, scans: await read('node.log'), sleeps: await read('sleep.log'), claude: (await read('claude.log')).length > 0 };
+}
+
+const scanner = new URL('../skills/review-team/scripts/scan-prs.mjs', import.meta.url).pathname;
+
+test('--loopはscanに組織・リポジトリ・チーム・--act-on-onlyを渡し、scanが失敗しても待ってから繰り返す', async () => {
+  const { code, scans, sleeps, claude } = await loop(['--loop', '--org', 'acme', '--repo', 'widget',
+    '--repo', 'gadget.js', '--team', 'opus:xhigh-sol', '--act-on-only']);
+  assert.equal(code, 'SIGTERM');
+  assert.deepEqual(scans, [`${scanner} scan --org acme --repo widget --repo gadget.js --team opus:xhigh-sol --act-on-only`]);
+  assert.deepEqual(sleeps, ['900']);
+  assert.equal(claude, false);
+  const plain = await loop(['--loop', '--org', 'acme', '--interval', '30']);
+  assert.deepEqual(plain.scans, [`${scanner} scan --org acme`]);
+  assert.deepEqual(plain.sleeps, ['1800']);
+});
+
+test('--loopの引数の誤りは、scanを起動せずに終了コード1で止まる', async () => {
+  for (const args of [
+    ['--loop'], ['--loop', '--org', 'acme', prUrl], ['--loop', '--org', 'acme', '--print'],
+    ['--loop', '--org', 'acme', '--interval', '0'], ['--loop', '--org', 'acme', '--interval', '08'],
+    ['--loop', '--org', 'acme', '--interval', '1m'], ['--loop', '--org', 'acme', '--interval'],
+    ['--loop', '--org', 'acme', '--team', 'opus-nope'], ['--org', 'acme', prUrl], ['--repo', 'widget', prUrl], ['--interval', '5', prUrl],
+    ['--loop', '--org', 'acme', '--repo', 'acme/widget'], ['--loop', '--org', 'acme', '--repo', 'a b'], ['--loop', '--org', 'acme', '--repo', '*'],
+  ]) {
+    const { code, scans, sleeps, claude } = await loop(args);
+    assert.equal(code, 1, args.join(' '));
+    assert.deepEqual([scans, sleeps, claude], [[], [], false], args.join(' '));
+  }
+});

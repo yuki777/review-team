@@ -212,6 +212,7 @@ node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外
 
 - `--team` は `review-team` コマンドと同じ書き方で、`:<effort>` も付けられます（上の例は Opus と Sol を xhigh で動かします）。`--team` は登録時には確かめないので、書き方を誤ると毎時の実行がログにだけ失敗を残します。登録の前に `scan` を1回動かして確かめてください。
 - 設定を変えるときは `install` をもう一度実行します。前の登録と入れ替わります。
+- `--repo <名前>` を付けると、組織全体ではなく、その組織のそのリポジトリだけを探します（`owner/` は付けません。複数回指定できます）。
 - `scan-prs.mjs` は同じディレクトリの `review-team` を呼びます。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
 
 - 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリと、Renovate（`renovate[bot]`）が作成した PR は除きます。自前のアカウントで動かす Renovate は除きません）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
@@ -222,6 +223,20 @@ node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外
 - install は、`claude`・`gh`・`node` が通る端末から実行してください。その時点の PATH を plist に写します。組織名は手元の plist（`~/Library/LaunchAgents/io.github.yuki777.review-team.scan.plist`）にだけ入ります。
 - scan の出力の各行（エラーの行を除く）の先頭には、ローカル時刻（`YYYY-MM-DD HH:MM:SS`）が付きます。最後まで走ると `<時刻> scan 終了: レビュー M 件、見送り N 件` を1行出します（依頼が無いときも出ます）。見送りには、すでにレビューを始めた PR は数えません。
 - ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。PR ごとのレビューのログと、毎時の実行の出力（`scan.log`）です。
+
+#### launchd を使わずに前面で繰り返す
+
+`review-team --loop` は、同じ scan を前面で動かし、scan が終わるたびに `--interval` 分（既定 15）待ってまた scan します。Ctrl-C で止まり、実行中のレビューも一緒に止めます。止めたレビューの PR は、次の scan でもう一度レビューします。
+
+```sh
+review-team --loop --org <組織> --repo <リポジトリ名> --team opus:xhigh-sol:xhigh --act-on-only
+review-team --loop --org <組織> --interval 30  # 組織全体を、scan 終了後30分待って繰り返す
+```
+
+- レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
+- scan が失敗しても（GitHub への接続の失敗など）止まらず、次の回にまた試します。
+- launchd の毎時 scan と同じロックを使うので、両方が動いていても同じ PR を二重にレビューしません（後から始めた側が何もせずに終わります）。
+- `--org`・`--repo`・`--interval` は `--org <組織>` の形だけ受け付けます（`--org=<組織>` は使えません）。
 
 ## リリース
 
