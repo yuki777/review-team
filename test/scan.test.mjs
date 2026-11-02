@@ -51,9 +51,9 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
   const { stdout } = await scan('--team', 'opus-sol', '--act-on-only');
   assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false user-review-requested:@me org:acme$/m);
   for (const [n, reason] of [[2, 'conflict'], [3, 'mergeable unknown'], [4, 'ci failed'], [5, 'ci failed'], [6, 'ci running'], [7, 'ci running']]) {
-    assert.match(stdout, new RegExp(`${url(n)}: skip \\(${reason}\\)`));
+    assert.match(stdout, new RegExp(`${url(n)} skip \\(${reason}\\)`));
   }
-  assert.match(stdout, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} https:\/\/github\.com\/acme\/widget\/pull\/1: review aaa$/m);
+  assert.match(stdout, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} https:\/\/github\.com\/acme\/widget\/pull\/1 review aaa$/m);
   assert.match(stdout, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} scan 終了: レビュー 2 件、見送り 6 件$/m);
   const team = '--reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high';
   assert.deepEqual(await reviews(), [1, 8].map(n =>
@@ -91,7 +91,7 @@ test('レビューのたびに検索し直し、待っている間にCIが赤く
   await setPrs([{ n: 1 }, { n: 2 }, { n: 3 }]);
   await setPrs([{ n: 1 }, { n: 2, ci: 'FAILURE' }, { n: 3 }], join(dir, 'next-search.json'));
   const { stdout } = await scan();
-  assert.match(stdout, new RegExp(`${url(2)}: skip \\(ci failed\\)`));
+  assert.match(stdout, new RegExp(`${url(2)} skip \\(ci failed\\)`));
   assert.deepEqual((await reviews()).map(line => line.split(' ').at(-1)), [url(1), url(3)]);
 });
 
@@ -102,8 +102,8 @@ test('止まらないレビューは、SIGTERMを無視する子も含めて制�
   const started = Date.now();
   const { stdout } = await scan();
   assert.ok(Date.now() - started < 10000);
-  assert.match(stdout, new RegExp(`${url(1)}: exit SIGTERM`));
-  assert.match(stdout, new RegExp(`${url(2)}: review`));
+  assert.match(stdout, new RegExp(`${url(1)} exit SIGTERM`));
+  assert.match(stdout, new RegExp(`${url(2)} review`));
   // The whole process group is stopped, so nothing the lead started is left running.
   for (const pid of (await readFile(join(dir, 'sleep.pid'), 'utf8')).trim().split('\n')) {
     const alive = () => { try { process.kill(Number(pid), 0); return true; } catch { return false; } };

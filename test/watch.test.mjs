@@ -71,7 +71,7 @@ cp "${diff}" "$out/reviewed.diff"
   const tick = async () => {
     const before = await state().catch(() => null);
     const { stdout } = await cli('tick');
-    if (/: review$/m.test(stdout)) {
+    if (/ review$/m.test(stdout)) {
       for (let i = 0; i < 100 && (await state()).lastAttemptAt === before?.lastAttemptAt; i++) {
         await new Promise(done => setTimeout(done, 50));
       }
@@ -87,7 +87,7 @@ cp "${diff}" "$out/reviewed.diff"
   };
   // A new head is only observed on the first tick; the next tick acts on it.
   const tickAfterQuiet = async () => {
-    assert.match(await tick(), /: observe \(settling\)$/m);
+    assert.match(await tick(), / observe \(settling\)$/m);
     return tick();
   };
   return { tickAfterQuiet, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
@@ -128,7 +128,7 @@ test('新しいheadは次のtickでも変わっていなければ再レビュー
   // Another push before the next tick restarts the quiet time.
   await t.setPr({ headRefOid: 'ddd' });
   assert.match(await t.tick(), /observe/);
-  assert.match(await t.tick(), /: review$/m);
+  assert.match(await t.tick(), / review$/m);
   const s = await t.state();
   assert.equal(s.lastReviewedCommit, 'ddd');
   assert.equal(s.rereviews, 1);
@@ -188,7 +188,7 @@ test('上限の回を投稿した次のtickで、GitHubに問い合わせずに�
   for (const head of ['b1', 'b2']) {
     await writeFile(t.diff, `diff-${head}\n`);
     await t.setPr({ headRefOid: head });
-    assert.match(await t.tickAfterQuiet(), /: review$/m);
+    assert.match(await t.tickAfterQuiet(), / review$/m);
   }
   assert.equal((await t.state()).rereviews, 2);
   // While the last re-review still runs, its watch stays so the lead can record the post.
@@ -282,7 +282,7 @@ test('再レビュー中に解除したウォッチは、その再レビュー�
   await t.setPr({ headRefOid: 'bbb' });
   await t.tick();
   const { stdout } = await t.cli('tick');
-  assert.match(stdout, /: review$/m);
+  assert.match(stdout, / review$/m);
   for (let i = 0; i < 100 && await stat(t.stateFile).catch(() => null); i++) await new Promise(done => setTimeout(done, 50));
   for (let i = 0; i < 100 && await stat(`${t.stateFile}.lock`).catch(() => null); i++) await new Promise(done => setTimeout(done, 50));
   assert.equal(await stat(t.stateFile).catch(() => null), null);
@@ -296,7 +296,7 @@ test('再レビュー中にheadが進んだ回は失敗にも回数にも数え�
   await writeFile(join(t.dir, 'lead-pushes'), 'ccc');
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'bbb' });
-  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  assert.match(await t.tickAfterQuiet(), / review$/m);
   let s = await t.state();
   assert.equal(s.failures, 0);
   assert.equal(s.rereviews, 0);
@@ -306,7 +306,7 @@ test('再レビュー中にheadが進んだ回は失敗にも回数にも数え�
 
   // The head the lead saw arrive is already being watched, so the next tick reviews it.
   await rm(join(t.dir, 'lead-pushes'));
-  assert.match(await t.tick(), /: review$/m);
+  assert.match(await t.tick(), / review$/m);
   s = await t.state();
   assert.equal(s.lastReviewedCommit, 'ccc');
   assert.equal(s.rereviews, 1);
@@ -324,7 +324,7 @@ test('再レビュー中にheadが進めば、投稿を始める前ならリー�
   await writeFile(t.diff, 'diff-1\n');
   await t.setPr({ headRefOid: 'bbb' });
   const started = Date.now();
-  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  assert.match(await t.tickAfterQuiet(), / review$/m);
   assert.ok(Date.now() - started < 10000);
   const s = await t.state();
   assert.equal(s.lastExitCode, 'SIGTERM');
@@ -344,7 +344,7 @@ test('headが進んで止めたあとGitHubに届かなくても、追い越し�
   await writeFile(t.diff, 'diff-1\n');
   await writeFile(join(t.dir, 'gh-fails-after-stop'), '');
   await t.setPr({ headRefOid: 'bbb' });
-  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  assert.match(await t.tickAfterQuiet(), / review$/m);
   const s = await t.state();
   assert.equal(s.lastExitCode, 'SIGTERM');
   assert.equal(s.failures, 0);
@@ -399,7 +399,7 @@ test('追い越しが続くと静穏時間を延ばし、4倍で止める', asyn
   await writeFile(t.stateFile, JSON.stringify({ ...await t.state(), supersededRuns: 3, pendingSince: since(3) }));
   assert.match(await t.tick(), /skip \(settling\)/);
   await writeFile(t.stateFile, JSON.stringify({ ...await t.state(), pendingSince: since(5) }));
-  assert.match(await t.tick(), /: review$/m);
+  assert.match(await t.tick(), / review$/m);
 });
 
 test('tickのあと再レビューを始める前にheadが進んでいれば、レビューを起動せずに次のtickへ回す', async () => {
@@ -440,7 +440,7 @@ test('deferはレビュー済みのcommitなしで登録し、tickが最初の�
   assert.equal(result.deferred, true);
   assert.equal((await t.state()).lastReviewedCommit, null);
   await t.setPr({ headRefOid: 'ccc' });
-  assert.match(await t.tickAfterQuiet(), /: review$/m);
+  assert.match(await t.tickAfterQuiet(), / review$/m);
   const s = await t.state();
   assert.equal(s.lastReviewedCommit, 'ccc');
   // The first post does not use the re-review allowance, even when it is 0.
