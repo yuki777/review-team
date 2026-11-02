@@ -21,7 +21,7 @@ node scan-prs.mjs install --org <組織> [--team <TEAM>] [--act-on-only]
     launchd に毎時0分の scan を登録する（macOS）
 node scan-prs.mjs uninstall  launchd の登録を外す
 
-対象: user-review-requested:@me の open で draft でないPR（アーカイブ済みのリポジトリを除く）
+対象: user-review-requested:@me の open で draft でないPR（アーカイブ済みのリポジトリと、Renovate（renovate[bot]）が作成したPRを除く）
 見送る条件: コンフリクト、または GitHub が mergeable を計算中。CI が失敗、または実行中。--watch でウォッチ中。
 同じ head でこの scan がレビューを始めたことがある（失敗しても、新しい push まではやり直さない）
 `;
@@ -33,7 +33,7 @@ const query = `query($q: String!) { search(type: ISSUE, first: 100, query: $q) {
   url headRefOid mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }`;
 
 async function searchPrs(org) {
-  const q = `is:pr is:open draft:false archived:false user-review-requested:@me org:${org}`;
+  const q = `is:pr is:open draft:false archived:false -author:app/renovate user-review-requested:@me org:${org}`;
   const out = JSON.parse(await gh(['api', 'graphql', '-f', `query=${query}`, '-f', `q=${q}`]));
   return out.data.search.nodes.map(pr => ({ url: pr.url, head: pr.headRefOid, mergeable: pr.mergeable,
     ci: pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? null }));
