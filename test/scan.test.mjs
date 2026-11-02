@@ -49,7 +49,7 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
     { n: 4, ci: 'FAILURE' }, { n: 5, ci: 'ERROR' }, { n: 6, ci: 'PENDING' }, { n: 7, ci: 'EXPECTED' }, { n: 8, ci: null },
   ]);
   const { stdout } = await scan('--team', 'opus-sol', '--act-on-only');
-  assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false user-review-requested:@me org:acme$/m);
+  assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false -author:app\/renovate user-review-requested:@me org:acme$/m);
   for (const [n, reason] of [[2, 'conflict'], [3, 'mergeable unknown'], [4, 'ci failed'], [5, 'ci failed'], [6, 'ci running'], [7, 'ci running']]) {
     assert.match(stdout, new RegExp(`${url(n)} skip \\(${reason}\\)`));
   }

@@ -214,7 +214,7 @@ node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外
 - 設定を変えるときは `install` をもう一度実行します。前の登録と入れ替わります。
 - `scan-prs.mjs` は同じディレクトリの `review-team` を呼びます。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
 
-- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリは除きます）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
+- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリと、Renovate（`renovate[bot]`）が作成した PR は除きます。自前のアカウントで動かす Renovate は除きません）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
 - コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
 - `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
 - 同じ head で一度レビューを始めた PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
