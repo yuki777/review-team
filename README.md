@@ -180,7 +180,8 @@ review-team --team opus-sol <PR-URL>  # チームを指定
 review-team --team sol-opus <PR-URL>  # メンバーは順不同
 review-team --team opus:max-sol:xhigh <PR-URL>  # メンバーごとに effort を指定
 review-team --act-on-only <PR-URL>    # PR には Act On だけを投稿
-review-team --print <PR-URL>          # 画面を出さずに claude -p で動かす（launchd などから）
+review-team --print <PR-URL>          # 画面を出さずに claude -p で動かす（スクリプトなどから）
+review-team --loop --org <組織> --repo <リポジトリ名>  # 自分宛てのレビュー依頼を探してレビューし続ける（下を参照）
 ```
 
 チームは次のメンバー名を `-` でつないだものです。書いた順がレビュアーの順になります。effort は既定で high で、メンバー名の後ろに `:<effort>` を付けると変えられます（例: `opus:max-sol:xhigh-grok-argon:low`）。使える effort は CLI とモデルによって違い、表にない値を指定すると起動前にエラーで止まります。主担当の claude 自身の effort（xhigh）はこの指定では変わりません。
@@ -200,43 +201,29 @@ agy のモデル ID には `gemini-4-argon-high` のように effort が入っ�
 
 `--comment` と `--watch` が付くので、レビュー結果はプレビューの承認を待たずに PR に投稿され、以後の push も自動で再レビューされます。
 
-### 自分宛てのレビュー依頼を毎時見つけてレビューする（macOS）
+### 自分宛てのレビュー依頼を見つけてレビューし続ける
 
-同梱の `scripts/scan-prs.mjs` は、指定した組織で自分宛てにレビュー依頼が来た PR を探し、上の `review-team` コマンドを `--print`（画面を出さない `claude -p`）で1件ずつ動かします。launchd に登録すると、毎時0分に動きます。スリープ中に逃した回は、起きたときに1回動きます。
-
-```sh
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> --team opus:xhigh-sol:xhigh --act-on-only  # 今すぐ1回
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs install --org <組織> --team opus:xhigh-sol:xhigh --act-on-only  # 毎時0分に登録
-node ~/.agents/skills/review-team/scripts/scan-prs.mjs uninstall  # 登録を外す
-```
-
-- `--team` は `review-team` コマンドと同じ書き方で、`:<effort>` も付けられます（上の例は Opus と Sol を xhigh で動かします）。`--team` は登録時には確かめないので、書き方を誤ると毎時の実行がログにだけ失敗を残します。登録の前に `scan` を1回動かして確かめてください。
-- 設定を変えるときは `install` をもう一度実行します。前の登録と入れ替わります。
-- `--repo <名前>` を付けると、組織全体ではなく、その組織のそのリポジトリだけを探します（`owner/` は付けません。複数回指定できます）。
-- `scan-prs.mjs` は同じディレクトリの `review-team` を呼びます。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
-
-- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリと、Renovate（`renovate[bot]`）が作成した PR は除きます。自前のアカウントで動かす Renovate は除きません）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
-- コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
-- `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
-- 同じ head で一度レビューを始めた PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
-- 1件ずつ順にレビューし、次の PR に進む前に検索し直します（待っている間に push や CI の失敗があった PR は始めません）。1件90分で打ち切ります。前の回が終わっていなければ、次の回は何もしません。
-- install は、`claude`・`gh`・`node` が通る端末から実行してください。その時点の PATH を plist に写します。組織名は手元の plist（`~/Library/LaunchAgents/io.github.yuki777.review-team.scan.plist`）にだけ入ります。
-- scan の出力の各行（エラーの行を除く）の先頭には、ローカル時刻（`YYYY-MM-DD HH:MM:SS`）が付きます。最後まで走ると `<時刻> scan 終了: レビュー M 件、見送り N 件` を1行出します（依頼が無いときも出ます）。見送りには、すでにレビューを始めた PR は数えません。
-- ログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。PR ごとのレビューのログと、毎時の実行の出力（`scan.log`）です。
-
-#### launchd を使わずに前面で繰り返す
-
-`review-team --loop` は、同じ scan を前面で動かし、scan が終わるたびに `--interval` 分（既定 15）待ってまた scan します。Ctrl-C で止まり、実行中のレビューも一緒に止めます。止めたレビューの PR は、次の scan でもう一度レビューします。
+`review-team --loop` は、指定した組織で自分宛てにレビュー依頼が来た PR を探し、上の `review-team` コマンドを `--print`（画面を出さない `claude -p`）で1件ずつ動かす scan を、前面で繰り返します。scan が終わるたびに `--interval` 分（既定 15）待って、また scan します。Ctrl-C で止まり、実行中のレビューも一緒に止めます。止めたレビューの PR は、次の scan でもう一度レビューします。
 
 ```sh
 review-team --loop --org <組織> --repo <リポジトリ名> --team opus:xhigh-sol:xhigh --act-on-only
 review-team --loop --org <組織> --interval 30  # 組織全体を、scan 終了後30分待って繰り返す
 ```
 
+- `--repo <名前>` を付けると、組織全体ではなく、その組織のそのリポジトリだけを探します（`owner/` は付けません。複数回指定できます）。
+- `--team` は `review-team <PR-URL>` と同じ書き方で、`:<effort>` も付けられます（上の例は Opus と Sol を xhigh で動かします）。誤りは最初の scan の前に止まります。
+- `--org`・`--repo`・`--interval` は `--org <組織>` の形だけ受け付けます（`--org=<組織>` は使えません）。
 - レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
 - scan が失敗しても（GitHub への接続の失敗など）止まらず、次の回にまた試します。
-- launchd の毎時 scan と同じロックを使うので、両方が動いていても同じ PR を二重にレビューしません（後から始めた側が何もせずに終わります）。
-- `--org`・`--repo`・`--interval` は `--org <組織>` の形だけ受け付けます（`--org=<組織>` は使えません）。
+- scan の本体は同じディレクトリの `scripts/scan-prs.mjs` です。1回だけ動かすときは `node ~/.agents/skills/review-team/scripts/scan-prs.mjs scan --org <組織> ...` を使います（`--interval` 以外は `--loop` と同じオプションを取ります）。`npx skills` で入れた場合は `npx skills update review-team -g` で更新してください。
+
+- 対象は、`user-review-requested:@me` の open で draft でない PR です（アーカイブ済みのリポジトリと、Renovate（`renovate[bot]`）が作成した PR は除きます。自前のアカウントで動かす Renovate は除きません）。チーム宛ての依頼は含みません。レビューを投稿すると依頼が外れるので、レビュー済みの PR は次から出てきません。
+- コンフリクトがある PR、CI が失敗または実行中の PR は見送り、次の回にまた確かめます。GitHub がマージできるかを計算中の PR も、次の回に回します。
+- `--watch` でウォッチ中の PR は見送ります（push はウォッチが再レビューします）。
+- 同じ head で一度レビューした PR は、失敗しても次の回にやり直しません。新しい push があればもう一度レビューします。
+- 1件ずつ順にレビューし、次の PR に進む前に検索し直します（待っている間に push や CI の失敗があった PR は始めません）。1件90分で打ち切ります。別の scan が実行中なら、その回は何もしません。
+- scan の出力の各行（エラーの行を除く）の先頭には、ローカル時刻（`YYYY-MM-DD HH:MM:SS`）が付きます。最後まで走ると `<時刻> scan 終了: レビュー M 件、見送り N 件` を1行出します（依頼が無いときも出ます）。見送りには、すでにレビューした PR は数えません。
+- PR ごとのレビューのログは `${XDG_STATE_HOME:-$HOME/.local/state}/review-team/scan/logs/` に残ります。
 
 ## リリース
 
