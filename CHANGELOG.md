@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.42](https://github.com/yuki777/review-team/compare/v0.1.41...v0.1.42) - 2026-11-06
+
+- review-team コマンドで --act-on-only を既定にし、--with-consider を足す by @yuki777 in https://github.com/yuki777/review-team/pull/132
+
 ## [v0.1.41](https://github.com/yuki777/review-team/compare/v0.1.40...v0.1.41) - 2026-11-06
 
 - 既定のレビュアーを Opus 5.5 xhigh と GPT 6 Astra xhigh の2人にする by @yuki777 in https://github.com/yuki777/review-team/pull/130
