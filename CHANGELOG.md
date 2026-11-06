@@ -1,6 +1,6 @@
 # Changelog
 
-## [v1.0.1](https://github.com/yuki777/review-team/compare/v1.0.0...v1.0.1) - 2026-11-06
+## [v2.0.0](https://github.com/yuki777/review-team/compare/v1.0.0...v2.0.0) - 2026-11-06
 
 - Revise README for clarity and command instructions by @yuki777 in https://github.com/yuki777/review-team/pull/136
 - Act On のみの投稿をスキルの既定にし、--with-consider に統一する by @yuki777 in https://github.com/yuki777/review-team/pull/138
