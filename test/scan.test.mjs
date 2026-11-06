@@ -48,7 +48,7 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
     { n: 1 }, { n: 2, mergeable: 'CONFLICTING' }, { n: 3, mergeable: 'UNKNOWN' },
     { n: 4, ci: 'FAILURE' }, { n: 5, ci: 'ERROR' }, { n: 6, ci: 'PENDING' }, { n: 7, ci: 'EXPECTED' }, { n: 8, ci: null },
   ]);
-  const { stdout } = await scan('--team', 'opus-sol', '--act-on-only');
+  const { stdout } = await scan('--team', 'opus-sol');
   assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false -author:app\/renovate user-review-requested:@me org:acme$/m);
   for (const [n, reason] of [[2, 'conflict'], [3, 'mergeable unknown'], [4, 'ci failed'], [5, 'ci failed'], [6, 'ci running'], [7, 'ci running']]) {
     assert.match(stdout, new RegExp(`${url(n)} skip \\(${reason}\\)`));
@@ -57,18 +57,18 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
   assert.match(stdout, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} scan 終了: レビュー 2 件、見送り 6 件$/m);
   const team = '--reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high';
   assert.deepEqual(await reviews(), [1, 8].map(n =>
-    `-p --effort xhigh --permission-mode auto /review-team --comment --watch --act-on-only ${team} ${url(n)}`));
+    `-p --effort xhigh --permission-mode auto /review-team --comment --watch ${team} ${url(n)}`));
 });
 
-test('既定でレビューに--act-on-onlyを付け、--with-considerなら付けない。両方の指定は拒む', async () => {
+test('--with-considerならレビューに--with-considerを付ける。--act-on-onlyは受け付けない', async () => {
   const { setPrs, scan, reviews } = await setup();
   await setPrs([{ n: 1 }]);
   await scan();
   await setPrs([{ n: 2 }]);
   await scan('--with-consider');
   const lead = '-p --effort xhigh --permission-mode auto /review-team --comment --watch';
-  assert.deepEqual(await reviews(), [`${lead} --act-on-only ${url(1)}`, `${lead} ${url(2)}`]);
-  await assert.rejects(scan('--act-on-only', '--with-consider'), /同時に指定できません/);
+  assert.deepEqual(await reviews(), [`${lead} ${url(1)}`, `${lead} --with-consider ${url(2)}`]);
+  await assert.rejects(scan('--act-on-only'), /act-on-only/);
 });
 
 test('依頼が無くても、時刻付きの終了の行と件数を1行出す', async () => {

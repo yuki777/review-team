@@ -56,9 +56,8 @@ async function skipReason(pr, started) {
   return null;
 }
 
-// --act-on-only is the wrapper's default; it is still passed on for plists installed with it.
 const wrapperArgs = values => [...(values.team ? ['--team', values.team] : []),
-  ...(values['act-on-only'] ? ['--act-on-only'] : []), ...(values['with-consider'] ? ['--with-consider'] : [])];
+  ...(values['with-consider'] ? ['--with-consider'] : [])];
 
 // Runs one review in its own process group, so a hung lead is stopped with its reviewers and the next scan can run.
 async function review(url, values) {
@@ -178,11 +177,10 @@ async function uninstall() {
 
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    org: { type: 'string' }, repo: { type: 'string', multiple: true }, team: { type: 'string' }, 'act-on-only': { type: 'boolean' }, 'with-consider': { type: 'boolean' }, help: { type: 'boolean' },
+    org: { type: 'string' }, repo: { type: 'string', multiple: true }, team: { type: 'string' }, 'with-consider': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   const [command] = positionals;
   if (values.help || !command) { console.log(help); return; }
-  if (values['act-on-only'] && values['with-consider']) throw new Error('--act-on-only と --with-consider は同時に指定できません。');
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからの scan は禁止です。');
   for (const name of values.repo ?? []) {
     if (!/^[\w.-]+$/.test(name)) throw new Error(`--repo には組織の中のリポジトリ名だけを指定してください: ${name}`);
