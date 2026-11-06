@@ -143,14 +143,14 @@ test('再レビューは登録時のレビューと同じレビュアーで起�
   const out = await mkdtemp(join(t.dir, 'first-'));
   await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } },
     reviewers: [{ cli: 'claude', requestedModel: 'claude-opus-5-5', requestedEffort: 'high' },
-      { cli: 'grok', requestedModel: 'grok-4.7', requestedEffort: 'max' }] }));
+      { cli: 'codex', requestedModel: 'gpt-6-astra', requestedEffort: 'max' }] }));
   await writeFile(join(out, 'reviewed.diff'), 'diff-a');
   await t.cli('record', '--output', out);
   await t.setPr({ headRefOid: 'bbb' });
   await writeFile(t.diff, 'diff-b');
   await t.tickAfterQuiet();
   assert.match(await readFile(t.leadLog, 'utf8'),
-    / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer grok:grok-4.7:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
+    / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6-astra:max https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
 test('--with-considerで登録したウォッチは、記録し直しても再レビューに--with-considerを付ける', async () => {
@@ -166,7 +166,7 @@ test('--with-considerで登録したウォッチは、記録し直しても再�
   assert.match(await readFile(t.leadLog, 'utf8'), / \/review-team --comment --with-consider --rereview 1\/5 https:/);
 });
 
-test('レビュアーを記録していない以前のウォッチは、agyを含まない以前の既定で再レビューする', async () => {
+test('レビュアーを記録していない以前のウォッチは、既定のレビュアーで再レビューする', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });
   await writeFile(t.diff, 'diff-a');
@@ -176,8 +176,7 @@ test('レビュアーを記録していない以前のウォッチは、agyを�
   await t.setPr({ headRefOid: 'bbb' });
   await writeFile(t.diff, 'diff-b');
   await t.tickAfterQuiet();
-  assert.match(await readFile(t.leadLog, 'utf8'),
-    / --rereview 1\/5 --reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high --reviewer grok:grok-4.7-build-fast:high https:/);
+  assert.match(await readFile(t.leadLog, 'utf8'), / --rereview 1\/5 https:/);
 });
 
 test('上限の回を投稿した次のtickで、GitHubに問い合わせずに解除し、マージでも解除する', async () => {

@@ -1,6 +1,6 @@
 ---
 name: review-team
-description: "明示的に依頼された変更を、Claude Code・Codex・Grok・Antigravity の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
+description: "明示的に依頼された変更を、Claude Code・Codex の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
 disable-model-invocation: true
 argument-hint: "[--comment] [--watch] [--with-consider] [PR URL・番号・ブランチ] [依頼文]"
 ---
@@ -69,18 +69,17 @@ for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$O
 
 終了コードが 2 なら、起動の引数か資料の不備で、レビューは始まっていない。`"$OUTPUT.log"` で原因を確かめて直してから、新しい出力先で起動し直す。runner が終わる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
 
-レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` / `grok` / `agy`（Antigravity CLI）で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
+レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude（`claude:claude-opus-5-5:xhigh`）・Codex（`codex:gpt-6-astra:xhigh`）の2人。利用者が「Grok も加えて」（`grok:grok-4.7-build-fast:high`）「Gemini も加えて」（`agy:gemini-4-argon:high`）のように頼んだ場合は、既定の2人にそのレビュアーを足して指定する。agy のモデル ID は `agy models` で確かめられる。agy は `gemini-4-argon-high` のように effort 付きのモデル ID と食い違う effort を渡すとエラーにするので、effort を変えるときは effort なしのモデル ID（`gemini-4-argon`）を使う。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude（`claude:claude-opus-5-5:xhigh`）・Codex（`codex:gpt-6-astra:xhigh`）の2人。利用者が「Fable も加えて」（`claude:claude-fable-5-1:high`）のように頼んだ場合は、既定の2人にそのレビュアーを足して指定する。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
 
 利用者に伝えるべき注意:
 
-- レビュー対象のコードとクローンの内容は、使うレビュアーの各社サービス（Anthropic・OpenAI・xAI・Google）へ送られる。秘密情報を含む変更なら、実行前に確認する。
+- レビュー対象のコードとクローンの内容は、使うレビュアーの各社サービス（Anthropic・OpenAI）へ送られる。秘密情報を含む変更なら、実行前に確認する。
 - `--repo` や `--pr` を使うと、Codex はファイルを読むためにシェルを使う。read-only sandbox は書き込みと通信を止めるが、読み取りはクローンの外にも及ぶ可能性がある。
-- Grok と agy は利用者のふだんの設定（ホームディレクトリの設定・ログイン）のまま起動する。利用者が入れている MCP やルールがレビュアーの文脈に入ることがある。agy が未ログインだと、ブラウザでのログインが始まることがある。
-- CLI の版が古い、または意図しない CLI が使われた場合（manifest の `cliPath` と `cliVersion` で確認）、環境変数 `REVIEW_TEAM_CLAUDE_CLI` / `REVIEW_TEAM_CODEX_CLI` / `REVIEW_TEAM_GROK_CLI` / `REVIEW_TEAM_AGY_CLI` で CLI の絶対パスを指定できる。
+- CLI の版が古い、または意図しない CLI が使われた場合（manifest の `cliPath` と `cliVersion` で確認）、環境変数 `REVIEW_TEAM_CLAUDE_CLI` / `REVIEW_TEAM_CODEX_CLI` で CLI の絶対パスを指定できる。
 
-子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。runner は各 CLI に、読み取り系ツールだけを使う設定と、書き込み・コマンド実行・Web・MCP・再委譲を止める設定を渡す（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。Grok と agy 用のツール制限（Grok のプロファイル、agy のカスタムエージェント）は runner が実行のたびに一時作業場所へ書き出すので、利用者の事前準備は要らない。Claude と Codex は利用者の設定・MCP・hook を読まずに起動するが、Grok と agy はふだんの設定のまま起動する。`plan` や `readonly` という名称だけで隔離を保証したことにしない。
+子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。runner は各 CLI に、読み取り系ツールだけを使う設定と、書き込み・コマンド実行・Web・MCP・再委譲を止める設定を渡す（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。Claude と Codex は利用者の設定・MCP・hook を読まずに起動する。`plan` や `readonly` という名称だけで隔離を保証したことにしない。
 
 完了条件: runner 終了後、`manifest.json` の全レビュアーに状態が記録されている。終了コード 1 の部分失敗でも次の判定に進み、失敗を「指摘なし」に置き換えない。`status` が `ok` のレビュアーが2人以上いれば、失敗について利用者に確かめずに3節へ進む。`manifest.json` が無い場合は runner が途中で強制終了された（SIGKILL、起動元プロセスの異常終了など）とみなし、全員分を取得不可として扱う。途中の `.md` は完了したレビューとして読まず、新しい出力先で再実行する。
 
@@ -208,4 +207,4 @@ claude -p --effort <登録時の値> --permission-mode auto "/review-team --comm
 
 ## 由来
 
-cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex・Grok・Antigravity の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。
+cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

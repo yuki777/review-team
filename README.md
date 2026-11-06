@@ -1,6 +1,6 @@
 # review-team
 
-同じ変更を、Claude Code・Codex・Grok・Antigravity の CLI で動かす複数のモデルに独立してレビューさせ、主担当の AI が全指摘を根拠付きで判定するスキルです。コードは変更しません。
+同じ変更を、Claude Code・Codex の CLI で動かす複数のモデルに独立してレビューさせ、主担当の AI が全指摘を根拠付きで判定するスキルです。コードは変更しません。
 
 pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skills/interrogate) をもとにしています。pstack のインストールは不要です。
 
@@ -8,7 +8,6 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 
 - Node.js 22 以降、macOS または Linux
 - 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`
-- agy を加える場合は `gemini-4-argon` を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新してください
 
 ## インストール
 
@@ -55,8 +54,8 @@ npx skills remove review-team -g
 | `--comment` | プレビューの承認を待たずに PR へ投稿する（Act On をインラインコメントと総評に。Noted と Dismissed は投稿せず、Consider も `--with-consider` が無ければ投稿しない）。付けなくても、レビュー後に「PR にコメントして」と頼めばプレビューを見せてから投稿する |
 | `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、6時間、再レビュー5回のどれかで解除） |
-| `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` / `grok` / `agy` |
-| 言葉での指定 | 「Grok も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
+| `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
+| 言葉での指定 | 「Fable も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
 既定のレビュアーは Claude Opus 5.5・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
@@ -75,7 +74,7 @@ rt <PR-URL>
 | 引数・オプション | 内容 |
 | --- | --- |
 | `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
+| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
 | `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
 | `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
