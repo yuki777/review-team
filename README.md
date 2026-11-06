@@ -52,8 +52,8 @@ npx skills remove review-team -g
 | 引数・オプション | 内容 |
 | --- | --- |
 | `<PR-URL>` / PR 番号 / ブランチ名 | レビューする対象。省略すると、現在のブランチと既定ブランチの差分 |
-| `--comment` | プレビューの承認を待たずに PR へ投稿する（Act On と Consider をインラインコメントと総評に。Noted と Dismissed は投稿しない）。付けなくても、レビュー後に「PR にコメントして」と頼めばプレビューを見せてから投稿する |
-| `--act-on-only` | PR には Act On の指摘だけを投稿する |
+| `--comment` | プレビューの承認を待たずに PR へ投稿する（Act On をインラインコメントと総評に。Noted と Dismissed は投稿せず、Consider も `--with-consider` が無ければ投稿しない）。付けなくても、レビュー後に「PR にコメントして」と頼めばプレビューを見せてから投稿する |
+| `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、6時間、再レビュー5回のどれかで解除） |
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` / `grok` / `agy` |
 | 言葉での指定 | 「Grok も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
@@ -62,7 +62,7 @@ npx skills remove review-team -g
 
 ## コマンドで（`rt`）
 
-同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` 相当を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch <PR-URL>` 相当を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
 ### rtスクリプトをInstall(初回だけ)
 ```sh
 mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/bin/rt
@@ -72,13 +72,11 @@ mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/
 rt <PR-URL>
 ```
 
-v1.0.0 で `scripts/review-team` から `scripts/rt` に名前が変わりました。旧名でリンクを張っていた場合は、`rm ~/.local/bin/review-team` で外して、上の手順で張り直します。`scan-prs.mjs install` で launchd に登録した scan は、そのまま動きます。
-
 | 引数・オプション | 内容 |
 | --- | --- |
 | `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
 | `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
-| `--with-consider` | Consider も PR に投稿する（既定は Act On だけ。`--act-on-only` は既定と同じで、互換のために受け付ける） |
+| `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
 | `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
 | `--repo <名前>` | `--loop` で探すリポジトリを、組織の中のこのリポジトリに絞る（複数回指定できる） |

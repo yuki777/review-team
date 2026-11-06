@@ -2,7 +2,7 @@
 name: review-team
 description: "明示的に依頼された変更を、Claude Code・Codex・Grok・Antigravity の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
 disable-model-invocation: true
-argument-hint: "[--comment] [--watch] [--act-on-only] [PR URL・番号・ブランチ] [依頼文]"
+argument-hint: "[--comment] [--watch] [--with-consider] [PR URL・番号・ブランチ] [依頼文]"
 ---
 
 # review-team
@@ -153,7 +153,7 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 
 投稿の前に head が進んでいたら、利用者に選んでもらわずに、同書の7節「head が進んだとき」に従って新しい head を自動で再レビューする。古い head には投稿しない。この自動の再レビューは最初の投稿の流れに含み、`--comment` の同意が及ぶ。`--comment` はリードが解釈するもので、runner には渡さない。レビュー対象が PR でなければ投稿せず、その旨を伝える。
 
-利用者が起動時に `--act-on-only` を付けた場合は、投稿で Consider を Noted と同じく扱い、インラインにも総評にも出さない（同書の2節）。レアケースで Act On から Consider に下げた指摘も投稿されない。利用者への判定（4節）は変えず、Consider も示す。`--act-on-only` もリードが解釈するもので、runner には渡さない。
+PR に投稿するのは、既定では Act On だけで、Consider は Noted と同じく扱い、インラインにも総評にも出さない（同書の2節）。レアケースで Act On から Consider に下げた指摘も投稿されない。利用者が起動時に `--with-consider` を付けた場合は、Consider も投稿する。利用者への判定（4節）はどちらでも変えず、Consider も示す。`--with-consider` もリードが解釈するもので、runner には渡さない。
 
 完了条件: 投稿したレビューを GitHub 上で取り直して承認した内容と照合し、前回のスレッドを片付け、レビューの URL、各指摘の投稿先、resolve したスレッドと開けたままにしたスレッドを利用者に報告している。
 
@@ -167,7 +167,7 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 node "$SKILL_DIR/scripts/watch-pr.mjs" record --output "$OUTPUT" --effort <ホストが示す自分の effort>
 ```
 
-ホストが effort を示していなければ `--effort` を省く（既定 `xhigh`）。`--act-on-only` で起動されていれば、`record` と `defer` に `--act-on-only` を足す。登録したときの値が以後の再レビューに引き継がれ、登録済みの PR では変わらない。出力の `actOnOnly` が起動時の指定と違えば、そのことと、`watch-pr.mjs remove <PR-URL>` で外してから登録し直せば変えられることを利用者に伝える。`defer` の出力の `registered` が `true` なら、`record` と同じことに加えて、head が落ち着いたら定期実行が再レビューして最初の投稿をすることを伝える。`record` は PR が未登録なら登録し、登録済みならレビューした commit と差分を記録する。出力の `registered` が `true` なら、利用者に、ウォッチの期限（`expiresAt`）、再レビューの上限（`maxRereviews`）、`watch-pr.mjs list` と `watch-pr.mjs remove <PR-URL>` で確認と解除ができることを伝える。`schedule.installed` が `true` なら、1分ごとの定期実行を登録したことと、`schedule.plist` のパス、`watch-pr.mjs uninstall` で外せることも伝える。`schedule.cron` があれば（macOS 以外）、その行を crontab に足すよう伝える。
+ホストが effort を示していなければ `--effort` を省く（既定 `xhigh`）。`--with-consider` で起動されていれば、`record` と `defer` に `--with-consider` を足す。登録したときの値が以後の再レビューに引き継がれ、登録済みの PR では変わらない。出力の `withConsider` が起動時の指定と違えば、そのことと、`watch-pr.mjs remove <PR-URL>` で外してから登録し直せば変えられることを利用者に伝える。`defer` の出力の `registered` が `true` なら、`record` と同じことに加えて、head が落ち着いたら定期実行が再レビューして最初の投稿をすることを伝える。`record` は PR が未登録なら登録し、登録済みならレビューした commit と差分を記録する。出力の `registered` が `true` なら、利用者に、ウォッチの期限（`expiresAt`）、再レビューの上限（`maxRereviews`）、`watch-pr.mjs list` と `watch-pr.mjs remove <PR-URL>` で確認と解除ができることを伝える。`schedule.installed` が `true` なら、1分ごとの定期実行を登録したことと、`schedule.plist` のパス、`watch-pr.mjs uninstall` で外せることも伝える。`schedule.cron` があれば（macOS 以外）、その行を crontab に足すよう伝える。
 
 `record` か `defer` の出力の `registered` が `true` なら、このセッションを閉じてもウォッチは続くことも伝える。対話のセッションで、ホストがコマンドを裏で起動でき、そのコマンドが終わると応答を再開できる場合（Claude Code の端末・デスクトップアプリ・VS Code など）は、あわせて、セッションを開いたままにしておけば解除されたときにここで知らせることを伝え、次を裏で起動してから応答を終える。そうでないホストでは起動せず、閉じてもウォッチは続くことだけを伝える。`--rereview` での起動と、非対話の起動（`claude -p`）では `wait` を起動しない。
 
@@ -189,7 +189,7 @@ node "$SKILL_DIR/scripts/watch-pr.mjs" wait <出力の pr>
 定期実行（tick）は LLM を使わずに PR を見回り、新しい push があった PR についてだけ、次の形でこのスキルを起動する。
 
 ```sh
-claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment [--act-on-only] --rereview <n>/<上限> --reviewer <cli>:<model>:<effort> ... <PR-URL>"
+claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment [--with-consider] --rereview <n>/<上限> --reviewer <cli>:<model>:<effort> ... <PR-URL>"
 ```
 
 `--reviewer` は、登録したときのレビューで使ったレビュアー全員の分が付く（manifest の `reviewers` から `record` が記録する）。利用者が最初に外したレビュアーは、再レビューでも外れたままになる。
@@ -197,7 +197,7 @@ claude -p --effort <登録時の値> --permission-mode auto "/review-team --comm
 `--rereview <n>/<上限>` で起動された場合:
 
 - `--comment` と同じく、プレビューへの同意を得たものとして投稿する。止める条件（github-post.md の1b・4節）はそのまま守る。
-- 定期実行が `--act-on-only` を付けて起動していれば、その回の投稿も Act On だけにする。
+- 定期実行が `--with-consider` を付けて起動していれば、その回も Consider を投稿する。
 - 利用者がその場にいないので、利用者に選んでもらう場面（自分のものと断定できない下書きの削除、承認からのやり直しなど）では書き込みをせずに止め、理由を出力して終える。
 - head が進んでいたら、github-post.md の7節の自動再レビューはせず、投稿せずに終える。`watch-pr.mjs` が head の前進を見て、失敗にも再レビューの回数にも数えずに次の tick へ回す。`watch-pr.mjs` はリードの実行中も1分ごとに head を確かめ、進んでいればリードを止める。止められたくない投稿の途中は、github-post.md の4節の印で守る。
 - CI などの外の状態がそろうのを待つのは5分までにし、そろわなければ投稿せずに終える。runner が終了コード 2 で終わったときも、2節とは違って起動し直さず、投稿せずに終える。どちらも `record` を実行しなかった回として失敗に数えられる（head が進んでいた回は除く）。

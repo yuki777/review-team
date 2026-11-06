@@ -51,8 +51,7 @@ Teams (例):
 --team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
 レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
 以後の push は自動で再レビューされる（--watch）。
-PR には Act On の指摘だけを投稿する（--act-on-only。再レビューも同じ）。
---with-consider を付けると、Consider も投稿する。--act-on-only は既定と同じで、互換のために受け付ける。
+PR には Act On の指摘だけを投稿する（再レビューも同じ）。--with-consider を付けると、Consider も投稿する。
 --print を付けると、画面を出さずに claude -p で動かし、終わるまで待つ（launchd などから呼ぶとき）。
 
 --loop を付けると、URL の代わりに、自分宛てにレビュー依頼が来た PR を探してレビューする scan
@@ -84,7 +83,6 @@ fail() {
 
 TEAM=""
 REVIEW_TARGET=""
-ACT_ON_ONLY=""
 WITH_CONSIDER=""
 PRINT=""
 LOOP=""
@@ -102,10 +100,6 @@ while [ $# -gt 0 ]; do
     --team=*)
       TEAM="${1#--team=}"
       [ -n "$TEAM" ] || fail "--team にチーム名を指定してください"
-      shift
-      ;;
-    --act-on-only)
-      ACT_ON_ONLY=1
       shift
       ;;
     --with-consider)
@@ -156,8 +150,6 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
-
-[ -z "$ACT_ON_ONLY" ] || [ -z "$WITH_CONSIDER" ] || fail "--act-on-only と --with-consider は同時に指定できません"
 
 if [ -n "$LOOP" ]; then
   [ -z "$REVIEW_TARGET" ] || fail "--loop と URL は同時に指定できません"
@@ -211,6 +203,4 @@ fi
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
 cd "$work_root"
-post_args=" --act-on-only"
-[ -z "$WITH_CONSIDER" ] || post_args=""
-exec claude ${PRINT:+-p} --effort xhigh --permission-mode auto "/review-team --comment --watch${post_args}${reviewer_args} $REVIEW_TARGET"
+exec claude ${PRINT:+-p} --effort xhigh --permission-mode auto "/review-team --comment --watch${WITH_CONSIDER:+ --with-consider}${reviewer_args} $REVIEW_TARGET"
