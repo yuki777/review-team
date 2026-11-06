@@ -171,7 +171,7 @@ resolve する <n> 件、開けたままにする <m> 件。
 例:
 
 ```markdown
-[review-team v0.1.0-6-g5f64b59](https://github.com/yuki777/review-team)による自動レビューです。`claude:claude-fable-5-1:high`、`codex:gpt-6-astra:high`（失敗: timeout）に同じ入力でレビューさせ、`claude-opus-5-5` が指摘を検証しました。
+[review-team v0.1.0-6-g5f64b59](https://github.com/yuki777/review-team)による自動レビューです。`claude:claude-fable-5-1:high`、`codex:gpt-6-astra:high`、`codex:gpt-6.1-sol:high`（失敗: timeout）に同じ入力でレビューさせ、`claude-opus-5-5` が指摘を検証しました。
 ```
 
 「確認した点」には、指摘がなくても、何を確かめて問題なしとしたかを読み手に伝えるために、次の決まりで書く。
