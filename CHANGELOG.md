@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.1.41](https://github.com/yuki777/review-team/compare/v0.1.40...v0.1.41) - 2026-11-06
+
+- 既定のレビュアーを Opus 5.5 xhigh と GPT 6 Astra xhigh の2人にする by @yuki777 in https://github.com/yuki777/review-team/pull/130
+
 ## [v0.1.40](https://github.com/yuki777/review-team/compare/v0.1.39...v0.1.40) - 2026-11-02
 
 - README の使い方を /review-team と review-team コマンドの2つに絞って短くする by @yuki777 in https://github.com/yuki777/review-team/pull/128
