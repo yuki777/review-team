@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const wrapper = new URL('../skills/review-team/scripts/review-team', import.meta.url).pathname;
+const wrapper = new URL('../skills/review-team/scripts/rt', import.meta.url).pathname;
 const reviewersJson = new URL('../skills/review-team/config/reviewers.json', import.meta.url).pathname;
 const skillDir = new URL('../skills/review-team', import.meta.url).pathname;
 const versionFile = new URL('../skills/review-team/VERSION', import.meta.url).pathname;
@@ -106,12 +106,12 @@ test('不明なメンバー・重複・空のメンバー・使えないeffort�
 test('--helpは使い方を出して終了コード0で終わる', async () => {
   const { code, stderr, argv } = await run(['--help']);
   assert.equal(code, 0);
-  assert.match(stderr, /usage: review-team/);
+  assert.match(stderr, /usage: rt /);
   assert.equal(argv, null);
 });
 
 test('--versionはVERSIONの版を標準出力に出して終了コード0で終わり、使い方にも版が出る', async () => {
-  const expected = `review-team v${(await readFile(versionFile, 'utf8')).trim()}`;
+  const expected = `rt v${(await readFile(versionFile, 'utf8')).trim()}`;
   const version = await run(['--version']);
   assert.equal(version.code, 0);
   assert.equal(version.stdout, `${expected}\n`);
@@ -124,12 +124,12 @@ test('シンボリックリンク経由で実行しても、実体の隣のVERSI
   const dir = await mkdtemp(join(tmpdir(), 'review-team-link-'));
   await symlink(skillDir, join(dir, 'skill'));
   await mkdir(join(dir, 'bin'));
-  // 絶対パスと相対パスのリンクを2段たどる: bin/rt -> <dir>/bin/review-team -> ../skill/scripts/review-team
-  await symlink(join('..', 'skill', 'scripts', 'review-team'), join(dir, 'bin', 'review-team'));
-  await symlink(join(dir, 'bin', 'review-team'), join(dir, 'bin', 'rt'));
+  // 絶対パスと相対パスのリンクを2段たどる: bin/rt -> <dir>/bin/link -> ../skill/scripts/rt
+  await symlink(join('..', 'skill', 'scripts', 'rt'), join(dir, 'bin', 'link'));
+  await symlink(join(dir, 'bin', 'link'), join(dir, 'bin', 'rt'));
   const { code, stdout } = await run(['--version'], join(dir, 'bin', 'rt'));
   assert.equal(code, 0);
-  assert.equal(stdout, `review-team v${(await readFile(versionFile, 'utf8')).trim()}\n`);
+  assert.equal(stdout, `rt v${(await readFile(versionFile, 'utf8')).trim()}\n`);
 });
 
 // The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.

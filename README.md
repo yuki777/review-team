@@ -60,19 +60,21 @@ npx skills remove review-team -g
 
 既定のレビュアーは Claude Opus 5.5・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
-### コマンドで（`review-team`）
+### コマンドで（`rt`）
 
-同梱の `scripts/review-team` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
 
 ```sh
-mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
-review-team <PR-URL>
+mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/bin/rt
+rt <PR-URL>
 ```
+
+v1.0.0 で `scripts/review-team` から `scripts/rt` に名前が変わりました。旧名でリンクを張っていた場合は、`rm ~/.local/bin/review-team` で外して、上の手順で張り直します。`scan-prs.mjs install` で launchd に登録した scan は、そのまま動きます。
 
 | 引数・オプション | 内容 |
 | --- | --- |
 | `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `review-team --help` |
+| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
 | `--with-consider` | Consider も PR に投稿する（既定は Act On だけ。`--act-on-only` は既定と同じで、互換のために受け付ける） |
 | `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
 | `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |

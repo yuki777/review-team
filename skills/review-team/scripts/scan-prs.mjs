@@ -10,13 +10,13 @@ import { acquireLock, escapeXml, gh, readState, scheduleEnv, statePath, stateRoo
 
 const execFileAsync = promisify(execFile);
 const script = fileURLToPath(import.meta.url);
-const wrapper = join(dirname(script), 'review-team');
+const wrapper = join(dirname(script), 'rt');
 const reviewTimeoutMs = () => Number(process.env.REVIEW_TEAM_SCAN_TIMEOUT || 5400) * 1000;
 const label = 'io.github.yuki777.review-team.scan';
 const help = `review-team scan: 自分宛てにレビュー依頼が来たPRを探し、review-team でレビューして投稿します。
 
 node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
-    依頼が来ているPRを1件ずつ順に review-team --print で動かす
+    依頼が来ているPRを1件ずつ順に rt --print で動かす
     --repo を付けると、組織全体ではなく、その組織のそのリポジトリだけを探す（複数回指定できる）
 node scan-prs.mjs install --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
     launchd に毎時0分の scan を登録する（macOS）
