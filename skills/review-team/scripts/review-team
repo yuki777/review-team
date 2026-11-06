@@ -41,12 +41,12 @@ Members:
   argon  agy:gemini-4-argon        low medium high
 
 Teams (例):
-  opus-sol             Claude Opus 5.5 + Codex GPT 6.1 Sol
-  opus-sol-grok        opus-sol + Grok
-  opus-sol-argon       opus-sol + Gemini (agy)
-  opus-sol-grok-argon  既定と同じ4人
-  fable-astra          Claude Fable 5.1 + Codex GPT 6 Astra
-  opus:max-sol:xhigh   Opus は max、Sol は xhigh
+  opus-sol                Claude Opus 5.5 + Codex GPT 6.1 Sol
+  opus-sol-grok           opus-sol + Grok
+  opus-sol-argon          opus-sol + Gemini (agy)
+  opus:xhigh-astra:xhigh  既定と同じ2人
+  fable-astra             Claude Fable 5.1 + Codex GPT 6 Astra
+  opus:max-sol:xhigh      Opus は max、Sol は xhigh
 
 --team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
 レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、

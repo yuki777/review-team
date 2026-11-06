@@ -7,8 +7,8 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 ## 必要なもの
 
 - Node.js 22 以降、macOS または Linux
-- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`・`grok`・`agy`（Antigravity CLI）
-- 既定の agy は `gemini-4-argon`（effort high）を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新するか「Gemini は外して」と頼んでください
+- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`
+- agy を加える場合は `gemini-4-argon` を使います。agy の版が古い、または契約でこのモデルが使えないと、agy のレビューは失敗します（ほかのレビュアーの結果は残ります）。`agy models` に出ない場合は、agy を更新してください
 
 ## インストール
 
@@ -56,9 +56,9 @@ npx skills remove review-team -g
 | `--act-on-only` | PR には Act On の指摘だけを投稿する |
 | `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、6時間、再レビュー5回のどれかで解除） |
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` / `grok` / `agy` |
-| 言葉での指定 | 「Grok は外して」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
+| 言葉での指定 | 「Grok も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-既定のレビュアーは Claude Opus 5.5・Codex GPT 6.1 Sol・Grok 4.7 Build Fast・Antigravity Gemini 4 Argon（effort はすべて high）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
+既定のレビュアーは Claude Opus 5.5・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
 ### コマンドで（`review-team`）
 
