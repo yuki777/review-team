@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.1.43](https://github.com/yuki777/review-team/compare/v0.1.42...v0.1.43) - 2026-11-06
+## [v1.0.0](https://github.com/yuki777/review-team/compare/v0.1.42...v1.0.0) - 2026-11-06
 
 - ラッパーコマンド scripts/review-team を scripts/rt に改名する by @yuki777 in https://github.com/yuki777/review-team/pull/134
 
