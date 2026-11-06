@@ -282,7 +282,8 @@ async function run(file) {
     const logs = join(watchDir(), 'logs');
     await mkdir(logs, { recursive: true, mode: 0o700 });
     const log = await open(join(logs, `${startedAt.replace(/[:.]/g, '-')}-${parsePrUrl(state.pr).number}.log`), 'w', 0o600);
-    const reviewerArgs = state.reviewers.map(spec => `--reviewer ${spec} `).join('');
+    // Watches registered before reviewers were recorded have none, so the re-review uses the default reviewers.
+    const reviewerArgs = (state.reviewers ?? []).map(spec => `--reviewer ${spec} `).join('');
     const withConsider = state.withConsider ? '--with-consider ' : '';
     const prompt = `/review-team --comment ${withConsider}--rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';

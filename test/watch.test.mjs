@@ -166,6 +166,19 @@ test('--with-considerで登録したウォッチは、記録し直しても再�
   assert.match(await readFile(t.leadLog, 'utf8'), / \/review-team --comment --with-consider --rereview 1\/5 https:/);
 });
 
+test('レビュアーを記録していない以前のウォッチは、既定のレビュアーで再レビューする', async () => {
+  const t = await setup();
+  await t.setPr({ headRefOid: 'aaa' });
+  await writeFile(t.diff, 'diff-a');
+  await t.register('aaa');
+  const { reviewers, ...legacy } = await t.state();
+  await writeFile(t.stateFile, JSON.stringify(legacy));
+  await t.setPr({ headRefOid: 'bbb' });
+  await writeFile(t.diff, 'diff-b');
+  await t.tickAfterQuiet();
+  assert.match(await readFile(t.leadLog, 'utf8'), / --rereview 1\/5 https:/);
+});
+
 test('上限の回を投稿した次のtickで、GitHubに問い合わせずに解除し、マージでも解除する', async () => {
   const t = await setup();
   await t.setPr({ headRefOid: 'aaa' });
