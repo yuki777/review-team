@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.0.0](https://github.com/yuki777/review-team/compare/v0.1.42...v1.0.0) - 2026-11-06
+
+- ラッパーコマンド scripts/review-team を scripts/rt に改名する by @yuki777 in https://github.com/yuki777/review-team/pull/134
+
 ## [v0.1.42](https://github.com/yuki777/review-team/compare/v0.1.41...v0.1.42) - 2026-11-06
 
 - review-team コマンドで --act-on-only を既定にし、--with-consider を足す by @yuki777 in https://github.com/yuki777/review-team/pull/132
