@@ -62,10 +62,10 @@ test('チーム名はメンバー名を-でつないだもので、書いた順�
   }
 });
 
-test('opus-sol-grok-argonはconfig/reviewers.jsonの既定と同じ4人になる', async () => {
+test('opus:xhigh-astra:xhighはconfig/reviewers.jsonの既定と同じ2人になる', async () => {
   const defaults = JSON.parse(await readFile(reviewersJson, 'utf8')).reviewers
     .map(({ cli, model, effort }) => `${cli}:${model}:${effort}`);
-  const { argv } = await run(['--team', 'opus-sol-grok-argon', prUrl]);
+  const { argv } = await run(['--team', 'opus:xhigh-astra:xhigh', prUrl]);
   assert.equal(argv.at(-1), prompt(defaults));
 });
 
