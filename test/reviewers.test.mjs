@@ -60,6 +60,7 @@ echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,
 
 for (const [spec, message] of [
   ['gemini:gemini-3', '未対応のCLIです'],
+  ['grok:grok-4.7', '未対応のCLIです'],
   ['claude', 'モデルIDが不正です'],
   ['claude:a:high:extra', '<cli>:<model>[:<effort>]'],
   ['codex:gpt;rm', 'モデルIDが不正です'],

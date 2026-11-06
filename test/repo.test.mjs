@@ -41,7 +41,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
     '--output', join(dir, 'out'), '--repo', repo, '--ref', first, '--timeout', '30'], {
     stdio: 'ignore',
     env: { ...process.env, TMPDIR: dir, XDG_STATE_HOME: state,
-      REVIEW_TEAM_CLAUDE_CLI: cli, REVIEW_TEAM_CODEX_CLI: '/nonexistent', REVIEW_TEAM_GROK_CLI: '/nonexistent' },
+      REVIEW_TEAM_CLAUDE_CLI: cli, REVIEW_TEAM_CODEX_CLI: '/nonexistent' },
   });
   await new Promise(resolve => child.on('exit', resolve));
 

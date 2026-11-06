@@ -8,7 +8,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
-const allClis = ['--reviewer', 'claude:m', '--reviewer', 'codex:m', '--reviewer', 'grok:m', '--reviewer', 'agy:m'];
+const allClis = ['--reviewer', 'claude:m', '--reviewer', 'codex:m'];
 
 async function startWithHangingClis(extraArgs = allClis) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
@@ -21,7 +21,7 @@ async function startWithHangingClis(extraArgs = allClis) {
     '--output', join(dir, 'out'), ...extraArgs], {
     stdio: 'ignore',
     env: { ...process.env, TMPDIR: dir, REVIEW_TEAM_CLAUDE_CLI: cli,
-      REVIEW_TEAM_CODEX_CLI: cli, REVIEW_TEAM_GROK_CLI: cli, REVIEW_TEAM_AGY_CLI: cli },
+      REVIEW_TEAM_CODEX_CLI: cli },
   });
   const exited = new Promise(resolve => child.on('exit', code => resolve(code)));
   return { dir, pids, child, exited };
@@ -45,7 +45,7 @@ async function assertCleanStop({ dir, pids, exited }, expectedStatus) {
   const manifest = JSON.parse(await readFile(join(dir, 'out', 'manifest.json'), 'utf8'));
   assert.equal(manifest.complete, false);
   assert.deepEqual(manifest.reviewers.map(r => [r.id, r.status]),
-    [['claude', expectedStatus], ['codex', expectedStatus], ['grok', expectedStatus], ['agy', expectedStatus]]);
+    [['claude', expectedStatus], ['codex', expectedStatus]]);
   assert.deepEqual((await readPids(pids, 0)).filter(alive), []);
   assert.deepEqual((await readdir(dir)).filter(name => /^review-team-/.test(name)), []);
   await rm(dir, { recursive: true, force: true });
@@ -53,7 +53,7 @@ async function assertCleanStop({ dir, pids, exited }, expectedStatus) {
 
 test('端末終了（SIGHUP）で子CLIを残さず中断を記録する', async () => {
   const run = await startWithHangingClis();
-  await readPids(run.pids, 4);
+  await readPids(run.pids, 2);
   run.child.kill('SIGHUP');
   await assertCleanStop(run, 'error');
 });

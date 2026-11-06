@@ -282,9 +282,7 @@ async function run(file) {
     const logs = join(watchDir(), 'logs');
     await mkdir(logs, { recursive: true, mode: 0o700 });
     const log = await open(join(logs, `${startedAt.replace(/[:.]/g, '-')}-${parsePrUrl(state.pr).number}.log`), 'w', 0o600);
-    // Watches registered before reviewers were recorded keep the default of that time, which had no agy.
-    const reviewers = state.reviewers ?? ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high', 'grok:grok-4.7-build-fast:high'];
-    const reviewerArgs = reviewers.map(spec => `--reviewer ${spec} `).join('');
+    const reviewerArgs = state.reviewers.map(spec => `--reviewer ${spec} `).join('');
     const withConsider = state.withConsider ? '--with-consider ' : '';
     const prompt = `/review-team --comment ${withConsider}--rereview ${n}/${state.maxRereviews} ${reviewerArgs}${state.pr}`;
     const lead = process.env.REVIEW_TEAM_LEAD_CLI || 'claude';
