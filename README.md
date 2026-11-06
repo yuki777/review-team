@@ -32,7 +32,7 @@ npx skills remove review-team -g
 
 ## 使い方
 
-### Claude Code / Codex から（`/review-team`）
+## Claude Code / Codex から（`/review-team`）
 
 レビューしたいリポジトリで、スキル名を付けて頼みます（Codex では `$review-team`）。
 
@@ -60,12 +60,15 @@ npx skills remove review-team -g
 
 既定のレビュアーは Claude Opus 5.5・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
-### コマンドで（`rt`）
+## コマンドで（`rt`）
 
-同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
-
+同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` 相当を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+### rtスクリプトをInstall(初回だけ)
 ```sh
 mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/bin/rt
+```
+### rtスクリプトでreview-teamを実行する
+```
 rt <PR-URL>
 ```
 
