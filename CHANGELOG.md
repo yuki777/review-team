@@ -1,5 +1,9 @@
 # Changelog
 
+## [v2.0.1](https://github.com/yuki777/review-team/compare/v2.0.0...v2.0.1) - 2026-11-06
+
+- レビュアーを Claude と Codex だけにし、Grok と agy の対応を削除する by @yuki777 in https://github.com/yuki777/review-team/pull/142
+
 ## [v2.0.0](https://github.com/yuki777/review-team/compare/v1.0.0...v2.0.0) - 2026-11-06
 
 - Revise README for clarity and command instructions by @yuki777 in https://github.com/yuki777/review-team/pull/136
