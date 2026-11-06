@@ -62,7 +62,7 @@ npx skills remove review-team -g
 
 ### コマンドで（`review-team`）
 
-同梱の `scripts/review-team` は、どのディレクトリからでも `/review-team --comment --watch <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+同梱の `scripts/review-team` は、どのディレクトリからでも `/review-team --comment --watch --act-on-only <PR-URL>` を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
 
 ```sh
 mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/review-team ~/.local/bin/review-team
@@ -73,7 +73,7 @@ review-team <PR-URL>
 | --- | --- |
 | `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
 | `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `grok` `argon`、`:<effort>` を省くと high。一覧と使える effort は `review-team --help` |
-| `--act-on-only` | PR には Act On の指摘だけを投稿する |
+| `--with-consider` | Consider も PR に投稿する（既定は Act On だけ。`--act-on-only` は既定と同じで、互換のために受け付ける） |
 | `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
 | `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
 | `--repo <名前>` | `--loop` で探すリポジトリを、組織の中のこのリポジトリに絞る（複数回指定できる） |
