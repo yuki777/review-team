@@ -34,7 +34,7 @@ for arg; do echo "$arg" >> "${log}"; done
   return { dir, code, stdout, stderr, cwd: lines?.[0], argv: lines ? lines.slice(1) : null };
 }
 
-const prompt = reviewers => `/review-team --comment --watch${reviewers.map(r => ` --reviewer ${r}`).join('')} ${prUrl}`;
+const prompt = reviewers => `/review-team --comment --watch --act-on-only${reviewers.map(r => ` --reviewer ${r}`).join('')} ${prUrl}`;
 
 test('チームを省略すると、状態ディレクトリで既定のレビュアーのまま起動する', async () => {
   const { dir, code, cwd, argv } = await run([prUrl]);
@@ -69,12 +69,13 @@ test('opus:xhigh-astra:xhighはconfig/reviewers.jsonの既定と同じ2人にな
   assert.equal(argv.at(-1), prompt(defaults));
 });
 
-test('--act-on-onlyは、チームの指定と並べても投稿の指示に--act-on-onlyとして渡す', async () => {
-  for (const args of [['--act-on-only', prUrl], [prUrl, '--act-on-only', '--team', 'opus']]) {
+test('既定で--act-on-onlyを渡し、--with-considerを付けると渡さない。--act-on-onlyは既定と同じ', async () => {
+  for (const [args, post] of [[[prUrl], ' --act-on-only'], [['--act-on-only', prUrl], ' --act-on-only'],
+    [[prUrl, '--act-on-only', '--team', 'opus'], ' --act-on-only'], [['--with-consider', prUrl], ''], [[prUrl, '--with-consider', '--team', 'opus'], '']]) {
     const { code, argv } = await run(args);
     assert.equal(code, 0, args.join(' '));
     const reviewers = args.includes('--team') ? ' --reviewer claude:claude-opus-5-5:high' : '';
-    assert.equal(argv.at(-1), `/review-team --comment --watch --act-on-only${reviewers} ${prUrl}`, args.join(' '));
+    assert.equal(argv.at(-1), `/review-team --comment --watch${post}${reviewers} ${prUrl}`, args.join(' '));
   }
 });
 
@@ -84,7 +85,7 @@ test('--printはclaude -pで起動し、ほかの引数は変えない', async (
     assert.equal(code, 0, args.join(' '));
     const reviewers = args.includes('--team') ? ' --reviewer claude:claude-opus-5-5:high' : '';
     assert.deepEqual(argv, ['-p', '--effort', 'xhigh', '--permission-mode', 'auto',
-      `/review-team --comment --watch${reviewers} ${prUrl}`], args.join(' '));
+      `/review-team --comment --watch --act-on-only${reviewers} ${prUrl}`], args.join(' '));
   }
 });
 
@@ -94,6 +95,7 @@ test('不明なメンバー・重複・空のメンバー・使えないeffort�
     ['--team', 'opus-*', prUrl],
     ['--team', 'grok:max', prUrl], ['--team', 'argon:xhigh', prUrl], ['--team', 'opus:bogus', prUrl], ['--team', 'opus:', prUrl],
     ['--team', 'opus:max:x', prUrl], ['--team', ':high', prUrl], ['--team', 'opus:max-opus', prUrl], ['--team', 'opus', 'sol', prUrl], ['opus-sol', prUrl, prUrl], ['--team'], ['--effort', 'max', prUrl], [],
+    ['--act-on-only', '--with-consider', prUrl],
   ]) {
     const { code, argv } = await run(args);
     assert.equal(code, 1, args.join(' '));
@@ -150,14 +152,14 @@ async function loop(args) {
 
 const scanner = new URL('../skills/review-team/scripts/scan-prs.mjs', import.meta.url).pathname;
 
-test('--loopはscanに組織・リポジトリ・チーム・--act-on-onlyを渡し、scanが失敗しても待ってから繰り返す', async () => {
+test('--loopはscanに組織・リポジトリ・チーム・--with-considerを渡し、scanが失敗しても待ってから繰り返す', async () => {
   const { code, scans, sleeps, claude } = await loop(['--loop', '--org', 'acme', '--repo', 'widget',
-    '--repo', 'gadget.js', '--team', 'opus:xhigh-sol', '--act-on-only']);
+    '--repo', 'gadget.js', '--team', 'opus:xhigh-sol', '--with-consider']);
   assert.equal(code, 'SIGTERM');
-  assert.deepEqual(scans, [`${scanner} scan --org acme --repo widget --repo gadget.js --team opus:xhigh-sol --act-on-only`]);
+  assert.deepEqual(scans, [`${scanner} scan --org acme --repo widget --repo gadget.js --team opus:xhigh-sol --with-consider`]);
   assert.deepEqual(sleeps, ['900']);
   assert.equal(claude, false);
-  const plain = await loop(['--loop', '--org', 'acme', '--interval', '30']);
+  const plain = await loop(['--loop', '--org', 'acme', '--interval', '30', '--act-on-only']);
   assert.deepEqual(plain.scans, [`${scanner} scan --org acme`]);
   assert.deepEqual(plain.sleeps, ['1800']);
 });

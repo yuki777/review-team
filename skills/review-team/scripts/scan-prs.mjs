@@ -15,10 +15,10 @@ const reviewTimeoutMs = () => Number(process.env.REVIEW_TEAM_SCAN_TIMEOUT || 540
 const label = 'io.github.yuki777.review-team.scan';
 const help = `review-team scan: 自分宛てにレビュー依頼が来たPRを探し、review-team でレビューして投稿します。
 
-node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--act-on-only]
+node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
     依頼が来ているPRを1件ずつ順に review-team --print で動かす
     --repo を付けると、組織全体ではなく、その組織のそのリポジトリだけを探す（複数回指定できる）
-node scan-prs.mjs install --org <組織> [--repo <名前>]... [--team <TEAM>] [--act-on-only]
+node scan-prs.mjs install --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
     launchd に毎時0分の scan を登録する（macOS）
 node scan-prs.mjs uninstall  launchd の登録を外す
 
@@ -56,12 +56,16 @@ async function skipReason(pr, started) {
   return null;
 }
 
+// --act-on-only is the wrapper's default; it is still passed on for plists installed with it.
+const wrapperArgs = values => [...(values.team ? ['--team', values.team] : []),
+  ...(values['act-on-only'] ? ['--act-on-only'] : []), ...(values['with-consider'] ? ['--with-consider'] : [])];
+
 // Runs one review in its own process group, so a hung lead is stopped with its reviewers and the next scan can run.
 async function review(url, values) {
   const logs = join(scanDir(), 'logs');
   await mkdir(logs, { recursive: true, mode: 0o700 });
   const log = await open(join(logs, `${new Date().toISOString().replace(/[:.]/g, '-')}-${url.split('/').at(-1)}.log`), 'w', 0o600);
-  const args = ['--print', ...(values.team ? ['--team', values.team] : []), ...(values['act-on-only'] ? ['--act-on-only'] : []), url];
+  const args = ['--print', ...wrapperArgs(values), url];
   const code = await new Promise(done => {
     const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', log.fd, log.fd], detached: true });
     const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
@@ -131,7 +135,7 @@ const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.pli
 function plist(values) {
   const args = [process.execPath, script, 'scan', '--org', values.org,
     ...(values.repo ?? []).flatMap(name => ['--repo', name]),
-    ...(values.team ? ['--team', values.team] : []), ...(values['act-on-only'] ? ['--act-on-only'] : [])];
+    ...wrapperArgs(values)];
   const log = escapeXml(join(scanDir(), 'logs', 'scan.log'));
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -174,10 +178,11 @@ async function uninstall() {
 
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    org: { type: 'string' }, repo: { type: 'string', multiple: true }, team: { type: 'string' }, 'act-on-only': { type: 'boolean' }, help: { type: 'boolean' },
+    org: { type: 'string' }, repo: { type: 'string', multiple: true }, team: { type: 'string' }, 'act-on-only': { type: 'boolean' }, 'with-consider': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   const [command] = positionals;
   if (values.help || !command) { console.log(help); return; }
+  if (values['act-on-only'] && values['with-consider']) throw new Error('--act-on-only と --with-consider は同時に指定できません。');
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからの scan は禁止です。');
   for (const name of values.repo ?? []) {
     if (!/^[\w.-]+$/.test(name)) throw new Error(`--repo には組織の中のリポジトリ名だけを指定してください: ${name}`);

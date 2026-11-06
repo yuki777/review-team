@@ -60,6 +60,17 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
     `-p --effort xhigh --permission-mode auto /review-team --comment --watch --act-on-only ${team} ${url(n)}`));
 });
 
+test('既定でレビューに--act-on-onlyを付け、--with-considerなら付けない。両方の指定は拒む', async () => {
+  const { setPrs, scan, reviews } = await setup();
+  await setPrs([{ n: 1 }]);
+  await scan();
+  await setPrs([{ n: 2 }]);
+  await scan('--with-consider');
+  const lead = '-p --effort xhigh --permission-mode auto /review-team --comment --watch';
+  assert.deepEqual(await reviews(), [`${lead} --act-on-only ${url(1)}`, `${lead} ${url(2)}`]);
+  await assert.rejects(scan('--act-on-only', '--with-consider'), /同時に指定できません/);
+});
+
 test('依頼が無くても、時刻付きの終了の行と件数を1行出す', async () => {
   const { setPrs, scan, reviews } = await setup();
   await setPrs([]);
