@@ -225,7 +225,7 @@ query($url: URI!, $after: String) {
 - 最初のコメントの `pullRequestReview.body` に、総評の末尾の `(https://github.com/yuki777/review-team)` へのリンクがある。
 - `isResolved` が `false` で、`totalCount` が 100 以下である。100 を超えるスレッドは全部の発言を読めないので、開けたままにする。
 
-リードは、各スレッドの最初のコメント（前回の指摘）とその後の発言を読み、新しい head のコードを SKILL.md 3節と同じく `git -C <path> show <commit>:<ファイル>` で開いて、次のどれかに決める。
+リードは、各スレッドの最初のコメント（前回の指摘）とその後の発言を読み、新しい head のコードを SKILL.md 3節と同じく `git -C <path> show <commit>:<ファイル>` で開いて、次のどれかに決める。前回の指摘に再現のコマンドがあれば、SKILL.md 4節の worktree で実行し直した結果も根拠にする。
 
 | 結論 | 扱い |
 | --- | --- |
@@ -456,7 +456,7 @@ mutation($thread: ID!) {
 
 1. head が5分変わらないのを待つ。1分ごとに本書の1b のクエリで `headRefOid` を取り、変わったら5分を数え直す。待つ間も応答を終えない。
 2. SKILL.md 2節と同じ runner を新しい出力先で起動し、落ち着いた head を `--pr` でレビューする。レビュアーは manifest の `reviewers` の各要素から `--reviewer <cli>:<requestedModel>:<requestedEffort>` を組み立てて渡す。runner に `--effort` は無い。
-3. SKILL.md 3・4節で判定する。前の回の Act On と Consider は、新しい head のコードで残っているかを確かめてから、前の回の指摘として引き継ぐ。直っていたものは引き継がず、総評の「確認した点」に書ける。
+3. SKILL.md 3・4節で判定する。前の回の Act On と Consider は、新しい head の検証用 worktree でそのコマンドを実行し直し、SKILL.md 4節と同じく分類し直してから、前の回の指摘として引き継ぐ。前の回の worktree は、ここで SKILL.md 4節のとおり消す。直っていたものは引き継がず、総評の「確認した点」に書ける。
 4. 新しい出力先を `$OUTPUT` として本書の1節から投稿を進める。`--comment` で起動されていれば、本書の3節のとおり返事を待たずに投稿する。`--comment` が無ければ、プレビューの承認を通常どおり待つ。
 
 2回再レビューしてもまだ head が進んでいたら、投稿せずに終える。`--watch` と `--comment` の両方があれば、SKILL.md 5節の `defer` でウォッチに引き継ぐ。そうでなければ、追い越されたことと、最後にレビューした commit とその判定を報告して終える。

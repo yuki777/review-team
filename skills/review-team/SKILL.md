@@ -102,14 +102,20 @@ runner の出力先にある `manifest.json`、`prompt.md`、成功したレビ�
 
 ### 実行してよいか
 
-`--pr` では、`gh pr view "$PR_URL" --json isCrossRepository,authorAssociation` で、`isCrossRepository` が `false`（fork でない）で、`authorAssociation` が `OWNER`・`MEMBER`・`COLLABORATOR` のどれかのときだけ実行する。`--repo` は利用者の手元のリポジトリなので実行してよい。どちらでもない（packet だけ）、または条件を満たさないときは実行せず、全指摘を「実行できなかった」として分類する。
+`--pr` では、次の結果で `sameRepo` が `true`（fork でない）で、`association` が `OWNER`・`MEMBER`・`COLLABORATOR` のどれかのときだけ実行する。`gh pr view` の `--json` には作者の権限が無いので REST で取る（`$GH_HOST` は PR の URL のホスト）。
+
+```sh
+gh api --hostname "$GH_HOST" "repos/<owner>/<repo>/pulls/<番号>" \
+  --jq '{sameRepo: (.head.repo.full_name == .base.repo.full_name), association: .author_association}'
+```
+
+`--repo` は利用者の手元のリポジトリなので実行してよい。どちらでもない（packet だけ）、または条件を満たさないときは実行せず、全指摘を「実行できなかった」として分類する。
 
 ### worktree で実行する
 
-`manifest.json` の `repository.path` と `repository.commit` から、書き込み可能な worktree を作る。
+`manifest.json` の `repository.path`（以下 `$REPO_PATH`）と `repository.commit`（以下 `$COMMIT`）から、書き込み可能な worktree を作る。
 
 ```sh
-git -C "$REPO_PATH" worktree prune
 git -C "$REPO_PATH" worktree add --detach "$OUTPUT/verify" "$COMMIT"
 ```
 
@@ -118,7 +124,7 @@ git -C "$REPO_PATH" worktree add --detach "$OUTPUT/verify" "$COMMIT"
 - 子が示したコマンドと再現スクリプトを読み、失敗を示すだけのものか確かめてから、worktree の中で実行する。worktree の外へ書く、認証情報を読む、PR やリポジトリへ書く、依存の導入以外でネットワークを使うコマンドは実行しない。子のコマンドが不適切なら、同じ失敗を示す最小のコマンドや再現スクリプトを自分で書いて実行してよい。
 - 依存が無くて走らないときは、lockfile どおりの導入（`npm ci`、`composer install` など）を worktree の中で1回だけ行ってよい。
 - 1コマンドは5分までにする。データベースや外部サービスが要るものは実行しない。
-- 判定が終わったら `git -C "$REPO_PATH" worktree remove --force "$OUTPUT/verify"` で消す。
+- 判定と、5節の投稿（前回のスレッドの確認を含む）が終わったら `git -C "$REPO_PATH" worktree remove --force "$OUTPUT/verify"` で消す。途中で止められた回の worktree は残る。
 
 ### 分類
 
@@ -145,14 +151,14 @@ git -C "$REPO_PATH" worktree add --detach "$OUTPUT/verify" "$COMMIT"
 実行できなかったが、起きる経路がある指摘。各指摘に、説明、どのモデルが挙げたか、実行できなかった理由。
 
 ### Dropped（却下）
-レビュアーごとに、落とした件数と理由。
+レビュアーごとに、落とした件数と理由。出典 ID は理由ごとにまとめて添える。
 
 ### 確認した点
 リードが判定のために実際にコードを開いて確かめ、問題なしとしたこと。Dropped にした指摘の根拠と、指摘がなくても意図に照らして確かめた点（呼び出し元、エラー経路、境界値など）を、1行ごとに「懸念または観点 → 結論（`path:line`）」の形で書く。根拠の箇所を示せない行と、開いていない箇所を確かめたとする行は書かない。Consider は確かめられていない懸念なので、ここには入れない。書くものがなければ節ごと省く。
 
 すべての指摘に、出典 ID（まとめた指摘はすべての元 ID）と場所（ファイルと行）を付ける。これは interrogate に無い例外で、5節の PR への投稿でインラインコメントの位置と、指摘と投稿先の対応に使う。
 
-完了条件: 全指摘（却下を含む）に分類、提起したモデル、理由、出典 ID、場所が付き、Act On には実行したコマンドと出力がある。検証用の worktree を消している。コード修正とコミットはこのレビューに含めない。PR への投稿は5節で、利用者が明示的に依頼した場合だけ行う。
+完了条件: 全指摘（却下を含む）に分類、提起したモデル、理由、出典 ID、場所が付き、Act On には実行したコマンドと出力がある。投稿しないなら、検証用の worktree を消している。コード修正とコミットはこのレビューに含めない。PR への投稿は5節で、利用者が明示的に依頼した場合だけ行う。
 
 ## 5. PR に投稿する（依頼された場合だけ）
 
