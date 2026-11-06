@@ -102,10 +102,20 @@ test('不明なメンバー・重複・空のメンバー・使えないeffort�
 });
 
 test('--helpは使い方を出して終了コード0で終わる', async () => {
-  const { code, stderr, argv } = await run(['--help']);
+  const { code, stdout, argv } = await run(['--help']);
   assert.equal(code, 0);
-  assert.match(stderr, /usage: rt /);
+  assert.match(stdout, /使い方:\n  rt /);
   assert.equal(argv, null);
+});
+
+test('引数の誤りは、エラーと--helpの案内だけを標準エラーに出して終了コード1で終わる', async () => {
+  for (const [args, message] of [[[], 'PR の URL を指定してください'], [['--bogus'], '不明なオプションです: --bogus']]) {
+    const { code, stdout, stderr, argv } = await run(args);
+    assert.equal(code, 1, args.join(' '));
+    assert.equal(stdout, '');
+    assert.equal(stderr, `rt: ${message}\n詳しくは rt --help\n`);
+    assert.equal(argv, null);
+  }
 });
 
 test('--versionはVERSIONの版を標準出力に出して終了コード0で終わり、使い方にも版が出る', async () => {
@@ -115,7 +125,7 @@ test('--versionはVERSIONの版を標準出力に出して終了コード0で終
   assert.equal(version.stdout, `${expected}\n`);
   assert.equal(version.argv, null);
   const help = await run(['--help']);
-  assert.equal(help.stderr.split('\n')[0], expected);
+  assert.equal(help.stdout.split('\n')[0], expected);
 });
 
 test('シンボリックリンク経由で実行しても、実体の隣のVERSIONを読む', async () => {

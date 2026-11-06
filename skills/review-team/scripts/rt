@@ -20,40 +20,77 @@ version() {
 }
 
 usage() {
-  echo "rt $(version)" >&2
-  cat >&2 <<'USAGE'
-usage: rt [--team <TEAM>] [--with-consider] [--print] <PR-URL>
-       rt --loop --org <組織> [--repo <名前>]... [--interval <分>] [--team <TEAM>] [--with-consider]
-       rt --version
+  echo "rt $(version)"
+  cat <<'USAGE'
 
-TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
-メンバー名の後ろに :<effort> を付けると、そのレビュアーの reasoning effort を変えられる（省略時は high）。
-例: opus:max-sol:xhigh
-主担当の claude 自身の effort（xhigh）は変わらない。
+使い方:
+  rt [--team <TEAM>] [--with-consider] [--print] <PR-URL>
+  rt --loop --org <組織> [--repo <名前>]... [--interval <分>] [--team <TEAM>] [--with-consider]
+  rt --help | --version
 
-Members:
+説明:
+  PR を review-team でレビューし、結果をそのまま PR に投稿するコマンド。
+  どのディレクトリから実行しても、状態ディレクトリ（${XDG_STATE_HOME:-~/.local/state}/review-team）で
+  claude を起動して /review-team --comment --watch <PR-URL> を実行する。そのため、
+    - プレビューの承認を待たずに、PR へ Act On（要対応）の指摘をインラインコメント
+      （差分の外の指摘は総評）で投稿する
+    - 投稿後は PR をウォッチし、新しい push が落ち着いたら（5分以上）自動で再レビュー・投稿する
+      （PR のマージかクローズ、6時間、再レビュー5回のどれかで終わる。draft の間は見送る。
+      見回りは macOS では launchd に自動で登録し、Linux では表示される cron の行を crontab に足す）
+  主担当の claude は effort xhigh、権限確認は auto で動く。
+
+オプション:
+  --team <TEAM>
+      レビュアーを、既定（config/reviewers.json）の代わりに TEAM の顔ぶれにする。
+      TEAM の書き方は下の「チーム」を参照。--team=<TEAM> の形でもよい。
+  --with-consider
+      Act On に加えて、Consider（要検討）の指摘も PR に投稿する。付けないと Act On だけを投稿する。
+      ウォッチ中の再レビューにも引き継がれる。
+  --print
+      対話画面を出さずに claude -p で動かし、レビューと投稿が終わるまで待ってから戻る。
+      launchd などから自動で呼ぶとき用。--loop とは一緒に使えない。
+  --loop
+      PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。
+      scan が終わるたびに --interval 分待ち、また scan する。Ctrl-C で止まる。--org が必要。
+      対象は open で draft でない PR（Renovate の PR とアーカイブ済みリポジトリを除く）。
+      コンフリクト・CI の失敗か実行中・ウォッチ中・同じ head でレビュー済みの PR は見送る。
+  --org <組織>
+      --loop で探す GitHub の組織。
+  --repo <名前>
+      --loop で探す範囲を、組織の中のこのリポジトリに絞る（owner/ は付けない）。複数回指定できる。
+  --interval <分>
+      --loop で scan と scan の間に待つ分。1以上の整数。省略すると 15。
+  -h, --help
+      このヘルプを出して終わる。
+  --version
+      版（rt vX.Y.Z）を出して終わる。
+
+  --org・--repo・--interval は --loop と一緒のときだけ使え、「--org 名前」の形だけ受け付ける。
+
+チーム:
+  TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
+  メンバー名の後ろに :<effort> を付けると、そのレビュアーの reasoning effort を変えられる（省略すると high）。
+  主担当の claude 自身の effort（xhigh）は変わらない。
+
   名前   CLI:モデル                使える effort
   opus   claude:claude-opus-5-5    low medium high xhigh max
   fable  claude:claude-fable-5-1   low medium high xhigh max
   sol    codex:gpt-6.1-sol         low medium high xhigh max ultra
   astra  codex:gpt-6-astra         low medium high xhigh max ultra
 
-Teams (例):
-  opus-sol                Claude Opus 5.5 + Codex GPT 6.1 Sol
-  opus:xhigh-astra:xhigh  既定と同じ2人
-  fable-astra             Claude Fable 5.1 + Codex GPT 6 Astra
-  opus:max-sol:xhigh      Opus は max、Sol は xhigh
+例:
+  rt https://github.com/OWNER/REPO/pull/123
+      既定のレビュアーでレビューして投稿し、以後の push も自動で再レビューする
+  rt --team opus:max-sol:xhigh https://github.com/OWNER/REPO/pull/123
+      Opus（effort max）と Sol（effort xhigh）の2人でレビューする
+  rt --with-consider https://github.com/OWNER/REPO/pull/123
+      Consider の指摘も投稿する
+  rt --loop --org OWNER --repo REPO --interval 30
+      OWNER/REPO で自分にレビュー依頼が来た PR を、30分おきに探してレビューする
 
---team を省略すると review-team の既定のレビュアー（config/reviewers.json）を使う。
-レビュー結果はプレビューの承認を待たずに PR に投稿され（--comment）、
-以後の push は自動で再レビューされる（--watch）。
-PR には Act On の指摘だけを投稿する（再レビューも同じ）。--with-consider を付けると、Consider も投稿する。
---print を付けると、画面を出さずに claude -p で動かし、終わるまで待つ（launchd などから呼ぶとき）。
-
---loop を付けると、URL の代わりに、自分宛てにレビュー依頼が来た PR を探してレビューする scan
-（scripts/scan-prs.mjs scan）を前面で繰り返す。scan が終わるたびに --interval 分（既定 15）待って、
-また scan する。Ctrl-C で止まる。--org は必須。--repo は --org の中のリポジトリ名（owner/ を付けない）で、
-複数回指定でき、指定するとそのリポジトリだけを探す。--org・--repo・--interval は「--org 名前」の形だけ受け付ける。
+終了ステータス:
+  オプションや引数が正しくないときは 1。--help・--version は 0。
+  それ以外は claude の終了ステータスを返す。--loop は Ctrl-C で止めるまで戻らない。
 USAGE
 }
 
@@ -71,7 +108,7 @@ member_spec() {
 
 fail() {
   echo "rt: $1" >&2
-  usage
+  echo "詳しくは rt --help" >&2
   exit 1
 }
 
@@ -155,10 +192,7 @@ if [ -n "$LOOP" ]; then
   esac
 else
   [ -z "$ORG$REPOS$INTERVAL" ] || fail "--org・--repo・--interval は --loop と一緒に指定してください"
-  if [ -z "$REVIEW_TARGET" ]; then
-    usage
-    exit 1
-  fi
+  [ -n "$REVIEW_TARGET" ] || fail "PR の URL を指定してください"
 fi
 
 reviewer_args=""

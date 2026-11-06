@@ -61,7 +61,7 @@ npx skills remove review-team -g
 
 ## コマンドで（`rt`）
 
-同梱の `scripts/rt` は、どのディレクトリからでも `/review-team --comment --watch <PR-URL>` 相当を起動するコマンドです。PATH の通ったディレクトリにリンクを張って使います。
+同梱の `scripts/rt` は、どのディレクトリから実行しても、状態ディレクトリ（`${XDG_STATE_HOME:-~/.local/state}/review-team`）で claude を起動して `/review-team --comment --watch <PR-URL>` を実行するコマンドです。つまり、プレビューの承認を待たずに PR へ Act On の指摘を投稿し、以後の push も、落ち着いてから自動で再レビューします（見回りの登録と解除の条件は上の `--watch`）。PATH の通ったディレクトリにリンクを張って使います。
 ### rtスクリプトをInstall(初回だけ)
 ```sh
 mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/bin/rt
@@ -71,15 +71,18 @@ mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/
 rt <PR-URL>
 ```
 
-| 引数・オプション | 内容 |
+各オプションの詳しい説明・メンバーの一覧・例は `rt --help` で見られます。
+
+| 引数・オプション | 付けると何が起こるか |
 | --- | --- |
-| `<PR-URL>` | レビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーをメンバー名の `-` つなぎで指定する（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
-| `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
-| `--print` | 画面を出さずに `claude -p` で動かし、終わるまで待つ |
-| `--loop --org <組織>` | URL の代わりに、自分宛てにレビュー依頼が来た PR を探して1件ずつレビューする scan を前面で繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
-| `--repo <名前>` | `--loop` で探すリポジトリを、組織の中のこのリポジトリに絞る（複数回指定できる） |
-| `--interval <分>` | `--loop` で scan の間に待つ分（既定 15） |
+| `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
+| `--team <TEAM>` | レビュアーを、既定（config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
+| `--with-consider` | Act On に加えて Consider も PR に投稿する（付けないと Act On だけ） |
+| `--print` | 対話画面を出さずに `claude -p` で動かし、レビューと投稿が終わるまで待ってから戻る（launchd などから呼ぶとき用） |
+| `--loop --org <組織>` | PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
+| `--repo <名前>` | `--loop` で探す範囲を、組織の中のこのリポジトリに絞る（複数回指定できる） |
+| `--interval <分>` | `--loop` で scan と scan の間に待つ分（既定 15） |
+| `-h`, `--help` / `--version` | ヘルプ / 版を出して終わる |
 
 `--loop` は、コンフリクトや CI の失敗・実行中の PR、ウォッチ中の PR、同じ head でレビュー済みの PR を見送ります。レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
 
