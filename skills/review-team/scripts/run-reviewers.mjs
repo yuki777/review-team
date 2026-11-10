@@ -21,7 +21,7 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --reviewer <cli>:<model>[:<effort>]
                                レビュアーを1人追加する（繰り返し指定可）。指定すると config/reviewers.json の一覧を置き換える
                                cli は claude / codex。effort の既定は high
-                               例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-1:max --reviewer codex:gpt-6-astra
+                               例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-2:max --reviewer codex:gpt-6-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
                                PR の head を読み取り専用で探索させる。資料の diff と intent を省略すると PR から補う
   --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する

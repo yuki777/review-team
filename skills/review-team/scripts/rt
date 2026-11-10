@@ -74,7 +74,7 @@ usage() {
 
   名前   CLI:モデル                使える effort
   opus   claude:claude-opus-5-5    low medium high xhigh max
-  fable  claude:claude-fable-5-1   low medium high xhigh max
+  fable  claude:claude-fable-5-2   low medium high xhigh max
   sol    codex:gpt-6.1-sol         low medium high xhigh max ultra
   astra  codex:gpt-6-astra         low medium high xhigh max ultra
 
@@ -99,7 +99,7 @@ USAGE
 member_spec() {
   case "$1" in
     opus)  echo "claude:claude-opus-5-5 low medium high xhigh max" ;;
-    fable) echo "claude:claude-fable-5-1 low medium high xhigh max" ;;
+    fable) echo "claude:claude-fable-5-2 low medium high xhigh max" ;;
     sol)   echo "codex:gpt-6.1-sol low medium high xhigh max ultra" ;;
     astra) echo "codex:gpt-6-astra low medium high xhigh max ultra" ;;
     *) return 1 ;;
