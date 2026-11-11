@@ -165,9 +165,11 @@ test('止まらないレビューは、SIGTERMを無視する子も含めて制�
   }
 });
 
-test('--orgが無ければ止まる', async () => {
+test('--orgか--repoのどちらか一方でなければ止まる', async () => {
   const { env } = await setup();
-  await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan'], { env }), /--orgが必要です/);
+  await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan'], { env }), /--org か --repo のどちらか一方/);
+  await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan', '--org', 'acme', '--repo', 'acme/widget'], { env }),
+    /--org か --repo のどちらか一方/);
 });
 
 test('スキルのディレクトリがシンボリックリンクでも、scan-prs.mjs と watch-pr.mjs は動く', async () => {
@@ -179,14 +181,14 @@ test('スキルのディレクトリがシンボリックリンクでも、scan-
   }
 });
 
-test('--repoを付けると、組織全体ではなくそのリポジトリだけを検索する。名前以外は拒む', async () => {
-  const { env, setPrs, scan, ghLog } = await setup();
+test('--repo owner/nameを付けると、組織全体ではなくそのリポジトリだけを検索する。owner/name以外は拒む', async () => {
+  const { env, setPrs, ghLog } = await setup();
   await setPrs([]);
-  await scan('--repo', 'widget', '--repo', 'HCAA.S4');
-  assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false -author:app\/renovate user-review-requested:@me repo:acme\/widget repo:acme\/HCAA\.S4$/m);
-  for (const name of ['other/widget', 'widget org:evil', '']) {
-    await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan', '--org', 'acme', '--repo', name], { env }),
-      /--repo には組織の中のリポジトリ名だけを指定してください/, name);
+  await execFileAsync(process.execPath, [scanner, 'scan', '--repo', 'acme/widget', '--repo', 'other/HCAA.S4'], { env });
+  assert.match(await readFile(ghLog, 'utf8'), /^q=is:pr is:open draft:false archived:false -author:app\/renovate user-review-requested:@me repo:acme\/widget repo:other\/HCAA\.S4$/m);
+  for (const repo of ['widget', 'a/b/c', 'acme/widget org:evil', '']) {
+    await assert.rejects(execFileAsync(process.execPath, [scanner, 'scan', '--repo', repo], { env }),
+      /--repo は owner\/name の形で指定してください/, repo);
   }
 });
 
