@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+query='is:pr state:open draft:false review-requested:@me status:success -author:app/renovate'
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -q|--query)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        printf 'pr1: %s には追加の検索条件を指定してください\n' "$1" >&2
+        exit 2
+      fi
+      query="$query $2"
+      shift 2
+      ;;
+    -h|--help)
+      printf '%s\n' '使い方: pr1 [-q|--query <追加の検索条件>]' \
+        '基本の検索条件に追加し、該当するPRのURLを1件だけ出力します。'
+      exit 0
+      ;;
+    *)
+      printf 'pr1: 不明なオプションです: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+gh api -X GET search/issues \
+  -f q="$query" \
+  -f sort=updated \
+  -f order=desc \
+  -F per_page=1 |
+  jq -r '.items[0].html_url // empty'
