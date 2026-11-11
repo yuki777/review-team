@@ -19,6 +19,15 @@ version() {
   echo "v$(cat "$(script_dir)/../VERSION")"
 }
 
+# GitHub の最新リリースと版が違えば、1行だけ警告する（確かめられなくても止めない）
+warn_if_outdated() {
+  local latest current
+  latest="$(gh api repos/yuki777/review-team/releases/latest --jq .tag_name 2>/dev/null)" || return 0
+  current="$(version)"
+  [ -z "$latest" ] || [ "$latest" = "$current" ] ||
+    echo "rt: 新しい版 $latest があります（いまは $current）。npx skills update review-team -g（git のチェックアウトなら git pull。--loop は止めてから）で更新してください" >&2
+}
+
 usage() {
   echo "rt $(version)"
   cat <<'USAGE'
@@ -42,6 +51,7 @@ usage() {
     - 同じ PR のレビュー（別の rt・scan・ウォッチの再レビュー）が実行中
     - head がレビュー済み（投稿まで終えた commit と同じ）。--force を付けるとやり直す
   レビュー中の PR は、投稿を終えるか claude が終わるまで、ほかの rt・scan・ウォッチの再レビューから見送られる。
+  起動のたび（--loop では scan のたび）に GitHub の最新リリースを確かめ、版が違えば標準エラーに警告を1行出す。
 
 オプション:
   --team <TEAM>
@@ -241,12 +251,14 @@ fi
 if [ -n "$LOOP" ]; then
   scanner="$(script_dir)/scan-prs.mjs"
   while :; do
+    warn_if_outdated
     # scan が失敗しても（gh の一時的な失敗など）、次の回にまた試す
     node "$scanner" scan ${ORG:+--org "$ORG"}$REPOS ${TEAM:+--team "$TEAM"} ${WITH_CONSIDER:+--with-consider} || true
     sleep $((INTERVAL * 60))
   done
 fi
 
+warn_if_outdated
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
 # script_dir can be relative, so pr-lock.mjs is found before leaving the current directory.
