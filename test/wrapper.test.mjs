@@ -273,10 +273,10 @@ async function loop(args) {
 const scanner = new URL('../skills/review-team/scripts/scan-prs.mjs', import.meta.url).pathname;
 
 test('--loopはscanに組織・リポジトリ・チーム・--with-considerを渡し、scanが失敗しても待ってから繰り返す', async () => {
-  const { code, scans, sleeps, claude } = await loop(['--loop', '--org', 'acme', '--repo', 'widget',
-    '--repo', 'gadget.js', '--team', 'opus:xhigh-sol', '--with-consider']);
+  const { code, scans, sleeps, claude } = await loop(['--loop', '--repo', 'acme/widget',
+    '--repo', 'other/gadget.js', '--team', 'opus:xhigh-sol', '--with-consider']);
   assert.equal(code, 'SIGTERM');
-  assert.deepEqual(scans, [`${scanner} scan --org acme --repo widget --repo gadget.js --team opus:xhigh-sol --with-consider`]);
+  assert.deepEqual(scans, [`${scanner} scan --repo acme/widget --repo other/gadget.js --team opus:xhigh-sol --with-consider`]);
   assert.deepEqual(sleeps, ['900']);
   assert.equal(claude, false);
   const plain = await loop(['--loop', '--org', 'acme', '--interval', '30']);
@@ -289,8 +289,9 @@ test('--loopの引数の誤りは、scanを起動せずに終了コード1で止
     ['--loop'], ['--loop', '--org', 'acme', prUrl], ['--loop', '--org', 'acme', '--print'],
     ['--loop', '--org', 'acme', '--force'], ['--loop', '--org', 'acme', '--interval', '0'], ['--loop', '--org', 'acme', '--interval', '08'],
     ['--loop', '--org', 'acme', '--interval', '1m'], ['--loop', '--org', 'acme', '--interval'],
-    ['--loop', '--org', 'acme', '--team', 'opus-nope'], ['--org', 'acme', prUrl], ['--repo', 'widget', prUrl], ['--interval', '5', prUrl],
-    ['--loop', '--org', 'acme', '--repo', 'acme/widget'], ['--loop', '--org', 'acme', '--repo', 'a b'], ['--loop', '--org', 'acme', '--repo', '*'],
+    ['--loop', '--org', 'acme', '--team', 'opus-nope'], ['--org', 'acme', prUrl], ['--repo', 'acme/widget', prUrl], ['--interval', '5', prUrl],
+    ['--loop', '--org', 'acme', '--repo', 'acme/widget'], ['--loop', '--repo', 'widget'], ['--loop', '--repo', 'a/b/c'],
+    ['--loop', '--repo', 'a/'], ['--loop', '--repo', '/b'], ['--loop', '--repo', 'a/-b'], ['--loop', '--repo', 'a b/c'], ['--loop', '--repo', '*/x'],
   ]) {
     const { code, scans, sleeps, claude } = await loop(args);
     assert.equal(code, 1, args.join(' '));

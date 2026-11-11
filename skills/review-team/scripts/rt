@@ -25,7 +25,7 @@ usage() {
 
 使い方:
   rt [--team <TEAM>] [--with-consider] [--print] [--force] <PR-URL>
-  rt --loop --org <組織> [--repo <名前>]... [--interval <分>] [--team <TEAM>] [--with-consider]
+  rt --loop (--org <組織> | --repo <owner/name>...) [--interval <分>] [--team <TEAM>] [--with-consider]
   rt --help | --version
 
 説明:
@@ -57,14 +57,15 @@ usage() {
       launchd などから自動で呼ぶとき用。--loop とは一緒に使えない。
   --loop
       PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。
-      scan が終わるたびに --interval 分待ち、また scan する。Ctrl-C で止まる。--org が必要。
+      scan が終わるたびに --interval 分待ち、また scan する。Ctrl-C で止まる。
+      --org か --repo のどちらか一方が必要（両方は指定できない）。
       対象は open で draft でない PR（Renovate の PR とアーカイブ済みリポジトリを除く）。
       コンフリクト・CI の失敗か実行中・ウォッチ中・レビュー中・同じ head でレビュー済みの PR は見送る。
       レビューが投稿まで終わらなかった head は、次の scan で1回だけやり直し、それも失敗したら新しい push まで見送る。
   --org <組織>
-      --loop で探す GitHub の組織。
-  --repo <名前>
-      --loop で探す範囲を、組織の中のこのリポジトリに絞る（owner/ は付けない）。複数回指定できる。
+      --loop で、この GitHub の組織の全リポジトリを探す。
+  --repo <owner/name>
+      --loop で、このリポジトリだけを探す。複数回指定でき、別の組織のリポジトリも混ぜられる。
   --interval <分>
       --loop で scan と scan の間に待つ分。1以上の整数。省略すると 15。
   -h, --help
@@ -73,6 +74,7 @@ usage() {
       版（rt vX.Y.Z）を出して終わる。
 
   --org・--repo・--interval は --loop と一緒のときだけ使え（--force は --loop と一緒には使えない）、「--org 名前」の形だけ受け付ける。
+  名前だけの --repo（owner/ なし）と、--org と --repo の併用はエラーになる（GitHub の検索では org: と repo: が絞り込みでなく和集合になるため）。
 
 チーム:
   TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -92,8 +94,8 @@ usage() {
       Opus（effort max）と Sol（effort xhigh）の2人でレビューする
   rt --with-consider https://github.com/OWNER/REPO/pull/123
       Consider の指摘も投稿する
-  rt --loop --org OWNER --repo REPO --interval 30
-      OWNER/REPO で自分にレビュー依頼が来た PR を、30分おきに探してレビューする
+  rt --loop --repo OWNER/REPO --repo OTHER/REPO --interval 30
+      OWNER/REPO と OTHER/REPO で自分にレビュー依頼が来た PR を、30分おきに探してレビューする
 
 終了ステータス:
   オプションや引数が正しくないときは 1。--help・--version と、レビューを見送ったときは 0。
@@ -164,9 +166,11 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --repo)
-      [ $# -ge 2 ] && [ -n "$2" ] || fail "--repo にリポジトリ名を指定してください"
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--repo に owner/name を指定してください"
       case "$2" in
-        *[!A-Za-z0-9._-]*|-*) fail "--repo には --org の中のリポジトリ名だけを指定してください: $2" ;;
+        */*/*|*[!A-Za-z0-9._/-]*|-*|/*|*/|*/-*) fail "--repo は owner/name の形で指定してください: $2" ;;
+        */*) ;;
+        *) fail "--repo は owner/name の形で指定してください: $2" ;;
       esac
       REPOS="$REPOS --repo $2"
       shift 2
@@ -199,7 +203,8 @@ if [ -n "$LOOP" ]; then
   [ -z "$REVIEW_TARGET" ] || fail "--loop と URL は同時に指定できません"
   [ -z "$PRINT" ] || fail "--loop と --print は同時に指定できません"
   [ -z "$FORCE" ] || fail "--loop と --force は同時に指定できません"
-  [ -n "$ORG" ] || fail "--loop には --org が必要です"
+  { [ -n "$ORG" ] || [ -n "$REPOS" ]; } && { [ -z "$ORG" ] || [ -z "$REPOS" ]; } ||
+    fail "--loop には --org か --repo のどちらか一方を指定してください"
   INTERVAL="${INTERVAL:-15}"
   case "$INTERVAL" in
     ''|0*|*[!0-9]*) fail "--interval は1以上の整数（分）で指定してください: $INTERVAL" ;;
@@ -237,7 +242,7 @@ if [ -n "$LOOP" ]; then
   scanner="$(script_dir)/scan-prs.mjs"
   while :; do
     # scan が失敗しても（gh の一時的な失敗など）、次の回にまた試す
-    node "$scanner" scan --org "$ORG"$REPOS ${TEAM:+--team "$TEAM"} ${WITH_CONSIDER:+--with-consider} || true
+    node "$scanner" scan ${ORG:+--org "$ORG"}$REPOS ${TEAM:+--team "$TEAM"} ${WITH_CONSIDER:+--with-consider} || true
     sleep $((INTERVAL * 60))
   done
 fi

@@ -17,10 +17,10 @@ const label = 'io.github.yuki777.review-team.scan';
 const maxAttempts = 2;
 const help = `review-team scan: 自分宛てにレビュー依頼が来たPRを探し、review-team でレビューして投稿します。
 
-node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
+node scan-prs.mjs scan (--org <組織> | --repo <owner/name>...) [--team <TEAM>] [--with-consider]
     依頼が来ているPRを1件ずつ順に rt --print で動かす
-    --repo を付けると、組織全体ではなく、その組織のそのリポジトリだけを探す（複数回指定できる）
-node scan-prs.mjs install --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
+    --org はその組織の全リポジトリ、--repo は owner/name のリポジトリだけを探す（複数回指定できる）。どちらか一方を指定する
+node scan-prs.mjs install (--org <組織> | --repo <owner/name>...) [--team <TEAM>] [--with-consider]
     launchd に毎時0分の scan を登録する（macOS）
 node scan-prs.mjs uninstall  launchd の登録を外す
 
@@ -36,9 +36,8 @@ const scanDir = () => join(stateRoot(), 'scan');
 const query = `query($q: String!) { search(type: ISSUE, first: 100, query: $q) { nodes { ... on PullRequest {
   url headRefOid mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }`;
 
-// Several repo: qualifiers are ORed by GitHub search.
-const scope = values => values.repo?.length
-  ? values.repo.map(name => `repo:${values.org}/${name}`).join(' ') : `org:${values.org}`;
+// Several repo: qualifiers are ORed by GitHub search (so are org: and repo:, which is why only one of them is allowed).
+const scope = values => values.org ? `org:${values.org}` : values.repo.map(repo => `repo:${repo}`).join(' ');
 
 async function searchPrs(values) {
   const q = `is:pr is:open draft:false archived:false -author:app/renovate user-review-requested:@me ${scope(values)}`;
@@ -103,7 +102,6 @@ async function review(url, values) {
 const say = message => console.log(`${new Date().toLocaleString('sv-SE')} ${message}`);
 
 async function scan(values) {
-  if (!values.org) throw new Error('--orgが必要です。');
   const lock = join(scanDir(), 'scan.lock');
   if (!await acquireLock(lock)) { say('前回の scan が実行中なので終わります。'); return; }
   try {
@@ -137,8 +135,8 @@ async function scan(values) {
 const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
 
 function plist(values) {
-  const args = [process.execPath, script, 'scan', '--org', values.org,
-    ...(values.repo ?? []).flatMap(name => ['--repo', name]),
+  const args = [process.execPath, script, 'scan',
+    ...(values.org ? ['--org', values.org] : values.repo.flatMap(repo => ['--repo', repo])),
     ...wrapperArgs(values)];
   const log = escapeXml(join(scanDir(), 'logs', 'scan.log'));
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -162,7 +160,6 @@ ${scheduleEnv().map(([key, value]) => `    <key>${escapeXml(key)}</key><string>$
 }
 
 async function install(values) {
-  if (!values.org) throw new Error('--orgが必要です。');
   if (process.platform !== 'darwin') throw new Error('install は macOS（launchd）だけです。ほかでは scan を定期実行してください。');
   const domain = `gui/${process.getuid()}`;
   await mkdir(join(scanDir(), 'logs'), { recursive: true, mode: 0o700 });
@@ -187,8 +184,11 @@ async function main() {
   const [command] = positionals;
   if (values.help || !command) { console.log(help); return; }
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからの scan は禁止です。');
-  for (const name of values.repo ?? []) {
-    if (!/^[\w.-]+$/.test(name)) throw new Error(`--repo には組織の中のリポジトリ名だけを指定してください: ${name}`);
+  if (command === 'scan' || command === 'install') {
+    if ((values.org === undefined) === (values.repo === undefined)) throw new Error('--org か --repo のどちらか一方を指定してください。');
+    for (const repo of values.repo ?? []) {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`--repo は owner/name の形で指定してください: ${repo}`);
+    }
   }
   if (command === 'scan') return scan(values);
   if (command === 'install') return install(values);
