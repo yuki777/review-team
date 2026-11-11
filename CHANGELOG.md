@@ -1,6 +1,6 @@
 # Changelog
 
-## [v3.0.4](https://github.com/yuki777/review-team/compare/v3.0.3...v3.0.4) - 2026-11-11
+## [v3.1.0](https://github.com/yuki777/review-team/compare/v3.0.3...v3.1.0) - 2026-11-11
 
 - LLM起動前にPR単位のロックを取り、同じheadの重複レビューを防ぐ by @yuki777 in https://github.com/yuki777/review-team/pull/151
 
