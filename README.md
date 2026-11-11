@@ -73,6 +73,8 @@ rt <PR-URL>
 
 各オプションの詳しい説明・メンバーの一覧・例は `rt --help` で見られます。
 
+rt は起動のたび（`--loop` では scan のたび）に GitHub の最新リリースを確かめ、手元の版と違えば標準エラーに警告を1行出します（止まりはしません）。`npx skills update review-team -g`（git のチェックアウトなら `git pull`）で更新してください。
+
 | 引数・オプション | 付けると何が起こるか |
 | --- | --- |
 | `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
@@ -111,7 +113,7 @@ rt --loop --org <組織> --team fable:xhigh-astra:xhigh
 
 [tagpr](https://github.com/Songmu/tagpr) が、main へのマージのたびにリリース用の PR を作り直します。その PR をマージすると、`skills/review-team/VERSION` の版でタグと GitHub Release が作られます。版は既定で patch が上がり、PR に `tagpr:minor` か `tagpr:major` のラベルを付けると上げ幅が変わります。VERSION を手で書き換える必要はありません。tagpr が PR を作れるよう、リポジトリの Settings > Actions > General > Workflow permissions で「Allow GitHub Actions to create and approve pull requests」を有効にしておきます。
 
-レビューの記録（`manifest.json` の `reviewTeamVersion`）には、このリポジトリのチェックアウトから動かしたときは `git describe` の値、`npx skills` で入れたときは VERSION の値が入ります。
+レビューの記録（`manifest.json` の `reviewTeamVersion`）には、このリポジトリのチェックアウトから動かしたときは `git describe` の値（未コミットの変更があると `-dirty` が付く）、`npx skills` で入れたときは VERSION の値が入ります。
 
 ## ライセンス
 
