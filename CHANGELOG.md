@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.0.1](https://github.com/yuki777/review-team/compare/v4.0.0...v4.0.1) - 2026-11-11
+
+- rt の実行時に最新リリースを確かめ、版が違えば警告する by @yuki777 in https://github.com/yuki777/review-team/pull/159
+
 ## [v4.0.0](https://github.com/yuki777/review-team/compare/v3.1.1...v4.0.0) - 2026-11-11
 
 - --repo を owner/name 形式にし、--org と排他にする by @yuki777 in https://github.com/yuki777/review-team/pull/156
