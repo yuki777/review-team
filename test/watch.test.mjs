@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -90,7 +90,7 @@ cp "${diff}" "$out/reviewed.diff"
     assert.match(await tick(), / observe \(settling\)$/m);
     return tick();
   };
-  return { tickAfterQuiet, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
+  return { tickAfterQuiet, env, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
 }
 
 test('recordはPRを6時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
@@ -499,4 +499,84 @@ test('waitは失敗で停止したときにも終わり、未登録のPRでは�
   assert.match(await t.tick(), /stop \(failed\)/);
   assert.equal(JSON.parse((await waiting).stdout).reason, 'failed');
   assert.match((await t.cli('list')).stdout, /停止\(failed\)/);
+});
+
+test('死んだpidのロックを同時に回収しても、取れるのは1つだけで、残った回収の印は1分で無視する', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-lock-'));
+  const lock = join(dir, 'pr.lock');
+  const dead = spawn('true');
+  await new Promise(done => dead.on('exit', done));
+  await writeFile(lock, String(dead.pid));
+  // A reclaim left by a process killed midway, two minutes ago.
+  await writeFile(`${lock}.reclaim-${dead.pid}`, '1');
+  const old = new Date(Date.now() - 120000);
+  await utimes(`${lock}.reclaim-${dead.pid}`, old, old);
+  // Each contender is its own process and stays alive a while, as a review holding the lock would.
+  const code = `const { acquireLock } = await import(${JSON.stringify(watcher)});
+console.log(await acquireLock(${JSON.stringify(lock)}));
+await new Promise(done => setTimeout(done, 1500));`;
+  const results = await Promise.all(Array.from({ length: 8 }, () =>
+    execFileAsync(process.execPath, ['--input-type=module', '-e', code]).then(({ stdout }) => stdout.trim())));
+  assert.equal(results.filter(result => result === 'true').length, 1);
+});
+
+test('recordは、rtが渡したロックが自分のものなら外し、投稿したcommitをレビュー済みとして残す', async () => {
+  const t = await setup();
+  const lock = `${t.stateFile}.lock`;
+  await mkdir(join(lock, '..'), { recursive: true });
+  await writeFile(lock, String(process.pid));
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  const record = token => execFileAsync(process.execPath, [watcher, 'record', '--output', out],
+    { env: { ...t.env, REVIEW_TEAM_PR_LOCK: token } });
+  // rt's own record registers the watch even though rt holds the lock.
+  assert.equal(JSON.parse((await record(String(process.pid + 1))).stdout).registered, true);
+  assert.equal(await readFile(lock, 'utf8'), String(process.pid));
+  await record(String(process.pid));
+  await assert.rejects(stat(lock));
+  assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'aaa');
+});
+
+test('ウォッチが解除されたあとの再レビューの記録でも、投稿したcommitはレビュー済みとして残す', async () => {
+  const t = await setup();
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'bbb', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  const { stdout } = await execFileAsync(process.execPath, [watcher, 'record', '--output', out],
+    { env: { ...t.env, REVIEW_TEAM_WATCH_POSTING: join(t.dir, 'posting') } });
+  assert.equal(JSON.parse(stdout).registered, false);
+  await assert.rejects(stat(t.stateFile));
+  assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'bbb');
+});
+
+test('rtのロックはcronの行に入らず、deferでも外れる。rtのレビュー中はtickが再レビューを見送る', async () => {
+  const t = await setup();
+  await writeFile(t.diff, 'diff-a\n');
+  await t.register('aaa');
+  await t.setPr({ headRefOid: 'bbb' });
+  const lock = `${t.stateFile}.lock`;
+  await writeFile(lock, String(process.pid));
+  assert.match(await t.tick(), / skip \(running\)$/m);
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'bbb', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  const { stdout } = await execFileAsync(process.execPath, [watcher, 'defer', '--output', out],
+    { env: { ...t.env, REVIEW_TEAM_PR_LOCK: String(process.pid) } });
+  if (process.platform !== 'darwin') assert.doesNotMatch(JSON.parse(stdout).schedule.cron, /REVIEW_TEAM_PR_LOCK/);
+  await assert.rejects(stat(lock));
+  // defer posted nothing, so the head is not recorded as reviewed.
+  assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'aaa');
+});
+
+test('中身の無いロックは、1分たつまで取らず、過ぎたら回収する', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-lock-'));
+  const lock = join(dir, 'pr.lock');
+  await writeFile(lock, '');
+  const { acquireLock } = await import(watcher);
+  assert.equal(await acquireLock(lock), false);
+  const old = new Date(Date.now() - 120000);
+  await utimes(lock, old, old);
+  assert.equal(await acquireLock(lock), true);
+  assert.equal(await readFile(lock, 'utf8'), String(process.pid));
 });

@@ -78,13 +78,16 @@ rt <PR-URL>
 | `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
 | `--team <TEAM>` | レビュアーを、既定（config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
 | `--with-consider` | Act On に加えて Consider も PR に投稿する（付けないと Act On だけ） |
+| `--force` | head がレビュー済みでも、もう一度レビューして投稿する（実行中のレビューがあれば、付けても見送る） |
 | `--print` | 対話画面を出さずに `claude -p` で動かし、レビューと投稿が終わるまで待ってから戻る（launchd などから呼ぶとき用） |
 | `--loop --org <組織>` | PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる |
 | `--repo <名前>` | `--loop` で探す範囲を、組織の中のこのリポジトリに絞る（複数回指定できる） |
 | `--interval <分>` | `--loop` で scan と scan の間に待つ分（既定 15） |
 | `-h`, `--help` / `--version` | ヘルプ / 版を出して終わる |
 
-`--loop` は、コンフリクトや CI の失敗・実行中の PR、ウォッチ中の PR、同じ head でレビュー済みの PR を見送ります。レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
+`rt` は claude を起動する前に GitHub で PR の head を確かめ、同じ PR のレビュー（別の `rt`・`--loop`・ウォッチの再レビュー）が実行中のときと、head がレビュー済み（投稿まで終えた commit と同じ）のときは、claude を起動せずに終了ステータス 0 で見送ります。レビュー中の PR は、投稿を終えるか claude が終わるまで、ほかのレビューから見送られます。GitHub に問い合わせられないときは、claude を起動せずに終了ステータス 2 で終わります。
+
+`--loop` は、コンフリクトや CI の失敗・実行中の PR、ウォッチ中・レビュー中の PR、同じ head でレビュー済みの PR を見送ります。投稿まで終わらなかった head は、次の scan で1回だけやり直し、それも失敗したら新しい push まで見送ります。レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
 
 ## コマンドで（`pr1`）
 

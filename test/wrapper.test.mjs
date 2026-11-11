@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,27 +11,47 @@ const skillDir = new URL('../skills/review-team', import.meta.url).pathname;
 const versionFile = new URL('../skills/review-team/VERSION', import.meta.url).pathname;
 const prUrl = 'https://example.test/acme/widget/pull/7';
 
-// The fake claude records its working directory and arguments, one argument per line.
-// command を渡すと、bash を通さずにそのパス（シンボリックリンクなど）を直接実行する。
-async function run(args, command) {
-  const dir = await mkdtemp(join(tmpdir(), 'review-team-wrapper-'));
+// The fake claude records its working directory and arguments, one argument per line, and the lock it was given.
+// The fake gh answers rt's question about the PR with the head in <dir>/head (aaa if missing), or fails with gh-fails.
+// command を渡すと、bash を通さずにそのパス（シンボリックリンクなど）を直接実行する。dir を渡すと、その状態で続けて実行する。
+async function setup(dir) {
+  dir ??= await mkdtemp(join(tmpdir(), 'review-team-wrapper-'));
   const bin = join(dir, 'bin');
-  await mkdir(bin);
-  const log = join(dir, 'claude.log');
+  await mkdir(bin, { recursive: true });
   await writeFile(join(bin, 'claude'), `#!/bin/sh
-pwd > "${log}"
-for arg; do echo "$arg" >> "${log}"; done
+echo "$$ $REVIEW_TEAM_PR_LOCK" >> "${join(dir, 'claude.pids')}"
+[ -f "${join(dir, 'claude-hangs')}" ] && sleep 30
+pwd > "${join(dir, 'claude.log')}"
+for arg; do echo "$arg" >> "${join(dir, 'claude.log')}"; done
+`);
+  await writeFile(join(bin, 'gh'), `#!/bin/sh
+[ -f "${join(dir, 'gh-fails')}" ] && { echo 'gh: network down' >&2; exit 1; }
+head=$(cat "${join(dir, 'head')}" 2>/dev/null || echo aaa)
+printf '{"data":{"resource":{"url":"${prUrl}","state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$head"
 `);
   await chmod(join(bin, 'claude'), 0o755);
-  const child = spawn(command ?? 'bash', command ? args : [wrapper, ...args], { stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') } });
+  await chmod(join(bin, 'gh'), 0o755);
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') };
+  delete env.REVIEW_TEAM_PR_LOCK;
+  return { dir, env };
+}
+
+function start(args, { dir, env }, command) {
+  const child = spawn(command ?? 'bash', command ? args : [wrapper, ...args], { stdio: ['ignore', 'pipe', 'pipe'], env });
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', chunk => { stdout += chunk; });
   child.stderr.on('data', chunk => { stderr += chunk; });
-  const code = await new Promise(resolve => child.on('exit', resolve));
-  const lines = await readFile(log, 'utf8').then(text => text.trimEnd().split('\n'), () => null);
-  return { dir, code, stdout, stderr, cwd: lines?.[0], argv: lines ? lines.slice(1) : null };
+  const done = (async () => {
+    const code = await new Promise(resolve => child.on('exit', resolve));
+    const lines = await readFile(join(dir, 'claude.log'), 'utf8').then(text => text.trimEnd().split('\n'), () => null);
+    return { dir, code, stdout, stderr, cwd: lines?.[0], argv: lines ? lines.slice(1) : null };
+  })();
+  return { child, done };
+}
+
+async function run(args, command, dir) {
+  return start(args, await setup(dir), command).done;
 }
 
 const prompt = reviewers => `/review-team --comment --watch${reviewers.map(r => ` --reviewer ${r}`).join('')} ${prUrl}`;
@@ -140,6 +160,98 @@ test('シンボリックリンク経由で実行しても、実体の隣のVERSI
   assert.equal(stdout, `rt v${(await readFile(versionFile, 'utf8')).trim()}\n`);
 });
 
+const prState = dir => join(dir, 'state', 'review-team', 'watch', 'prs', 'example.test', 'acme', 'widget', '7.json');
+const readJson = file => readFile(file, 'utf8').then(JSON.parse);
+const waitFor = async check => {
+  for (let i = 0; i < 200; i++) {
+    if (await check()) return;
+    await new Promise(done => setTimeout(done, 25));
+  }
+  throw new Error('待ちきれません');
+};
+// A pid that is certainly not running: a child that has already exited.
+const deadPid = async () => {
+  const child = spawn('true');
+  await new Promise(done => child.on('exit', done));
+  return child.pid;
+};
+
+test('claudeにはPRのロックを渡し、開始をheadごとに数える', async () => {
+  const { dir, code } = await run([prUrl]);
+  assert.equal(code, 0);
+  const [pid, token] = (await readFile(join(dir, 'claude.pids'), 'utf8')).trim().split(' ');
+  // exec keeps the shell's pid, so the lock names claude itself.
+  assert.equal(token, pid);
+  assert.equal(await readFile(`${prState(dir)}.lock`, 'utf8'), pid);
+  assert.deepEqual(await readJson(`${prState(dir)}.reviewed`), { attemptHead: 'aaa', attempts: 1 });
+  await run([prUrl], undefined, dir);
+  assert.equal((await readJson(`${prState(dir)}.reviewed`)).attempts, 2);
+  await writeFile(join(dir, 'head'), 'bbb');
+  await run([prUrl], undefined, dir);
+  assert.deepEqual(await readJson(`${prState(dir)}.reviewed`), { attemptHead: 'bbb', attempts: 1 });
+});
+
+test('レビュー済みのheadはclaudeを起動せずに終了コード0で見送り、--forceか新しいheadならレビューする', async () => {
+  const { dir } = await setup();
+  await mkdir(join(prState(dir), '..'), { recursive: true });
+  await writeFile(`${prState(dir)}.reviewed`, JSON.stringify({ completedHead: 'aaa' }));
+  const skipped = await run([prUrl], undefined, dir);
+  assert.equal(skipped.code, 0);
+  assert.equal(skipped.argv, null);
+  assert.match(skipped.stdout, /head aaa はレビュー済みなので見送ります（やり直すには --force）/);
+  // The lock taken to check is given back, so the PR does not look busy.
+  await assert.rejects(readFile(`${prState(dir)}.lock`));
+  const forced = await run(['--force', prUrl], undefined, dir);
+  assert.equal(forced.code, 0);
+  assert.equal(forced.argv.at(-1), prompt([]));
+  await rm(join(dir, 'claude.log'));
+  await writeFile(join(dir, 'head'), 'bbb');
+  assert.notEqual((await run([prUrl], undefined, dir)).argv, null);
+});
+
+test('同じPRを同時に起動すると、2本目はclaudeを起動せずに終了コード0で見送る', async () => {
+  const ctx = await setup();
+  await writeFile(join(ctx.dir, 'claude-hangs'), '');
+  const first = start([prUrl], ctx);
+  await waitFor(() => readFile(join(ctx.dir, 'claude.pids'), 'utf8').catch(() => ''));
+  const second = await start([prUrl], ctx).done;
+  assert.equal(second.code, 0);
+  assert.match(second.stdout, /同じPRのレビューが実行中なので見送ります/);
+  first.child.kill('SIGKILL');
+  await first.done;
+  assert.equal((await readFile(join(ctx.dir, 'claude.pids'), 'utf8')).trim().split('\n').length, 1);
+});
+
+test('異常終了したレビューのロックは、次の起動で回収してレビューする', async () => {
+  const { dir } = await setup();
+  await mkdir(join(prState(dir), '..'), { recursive: true });
+  await writeFile(`${prState(dir)}.lock`, String(await deadPid()));
+  const { code, argv } = await run([prUrl], undefined, dir);
+  assert.equal(code, 0);
+  assert.notEqual(argv, null);
+});
+
+test('GitHubに問い合わせられなければ、claudeを起動せず、開始も数えずに終了コード2で止まる', async () => {
+  const { dir } = await setup();
+  await writeFile(join(dir, 'gh-fails'), '');
+  const { code, argv, stderr } = await run([prUrl], undefined, dir);
+  assert.equal(code, 2);
+  assert.equal(argv, null);
+  assert.notEqual(stderr, '');
+  await assert.rejects(readFile(`${prState(dir)}.reviewed`));
+  await assert.rejects(readFile(`${prState(dir)}.lock`));
+});
+
+test('相対パスで起動しても動き、claudeにはGitHubの表記のURLを渡す', async () => {
+  const ctx = await setup();
+  const scripts = join(skillDir, 'scripts');
+  const child = spawn('bash', ['rt', 'https://example.test/ACME/widget/pull/7'], { cwd: scripts, env: ctx.env, stdio: 'ignore' });
+  assert.equal(await new Promise(done => child.on('exit', done)), 0);
+  const argv = (await readFile(join(ctx.dir, 'claude.log'), 'utf8')).trimEnd().split('\n');
+  assert.equal(argv.at(-1), prompt([]));
+  assert.ok(await readFile(`${prState(ctx.dir)}.lock`, 'utf8'));
+});
+
 // The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.
 async function loop(args) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-loop-'));
@@ -175,7 +287,7 @@ test('--loopはscanに組織・リポジトリ・チーム・--with-considerを�
 test('--loopの引数の誤りは、scanを起動せずに終了コード1で止まる', async () => {
   for (const args of [
     ['--loop'], ['--loop', '--org', 'acme', prUrl], ['--loop', '--org', 'acme', '--print'],
-    ['--loop', '--org', 'acme', '--interval', '0'], ['--loop', '--org', 'acme', '--interval', '08'],
+    ['--loop', '--org', 'acme', '--force'], ['--loop', '--org', 'acme', '--interval', '0'], ['--loop', '--org', 'acme', '--interval', '08'],
     ['--loop', '--org', 'acme', '--interval', '1m'], ['--loop', '--org', 'acme', '--interval'],
     ['--loop', '--org', 'acme', '--team', 'opus-nope'], ['--org', 'acme', prUrl], ['--repo', 'widget', prUrl], ['--interval', '5', prUrl],
     ['--loop', '--org', 'acme', '--repo', 'acme/widget'], ['--loop', '--org', 'acme', '--repo', 'a b'], ['--loop', '--org', 'acme', '--repo', '*'],

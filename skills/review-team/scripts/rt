@@ -24,7 +24,7 @@ usage() {
   cat <<'USAGE'
 
 使い方:
-  rt [--team <TEAM>] [--with-consider] [--print] <PR-URL>
+  rt [--team <TEAM>] [--with-consider] [--print] [--force] <PR-URL>
   rt --loop --org <組織> [--repo <名前>]... [--interval <分>] [--team <TEAM>] [--with-consider]
   rt --help | --version
 
@@ -38,6 +38,10 @@ usage() {
       （PR のマージかクローズ、6時間、再レビュー5回のどれかで終わる。draft の間は見送る。
       見回りは macOS では launchd に自動で登録し、Linux では表示される cron の行を crontab に足す）
   主担当の claude は effort xhigh、権限確認は auto で動く。
+  claude を起動する前に GitHub で PR の head を確かめ、次のときは claude を起動せずに見送る（終了ステータス 0）。
+    - 同じ PR のレビュー（別の rt・scan・ウォッチの再レビュー）が実行中
+    - head がレビュー済み（投稿まで終えた commit と同じ）。--force を付けるとやり直す
+  レビュー中の PR は、投稿を終えるか claude が終わるまで、ほかの rt・scan・ウォッチの再レビューから見送られる。
 
 オプション:
   --team <TEAM>
@@ -46,6 +50,8 @@ usage() {
   --with-consider
       Act On に加えて、Consider（要検討）の指摘も PR に投稿する。付けないと Act On だけを投稿する。
       ウォッチ中の再レビューにも引き継がれる。
+  --force
+      head がレビュー済みでも、もう一度レビューして投稿する。実行中のレビューがあれば、これを付けても見送る。
   --print
       対話画面を出さずに claude -p で動かし、レビューと投稿が終わるまで待ってから戻る。
       launchd などから自動で呼ぶとき用。--loop とは一緒に使えない。
@@ -53,7 +59,8 @@ usage() {
       PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。
       scan が終わるたびに --interval 分待ち、また scan する。Ctrl-C で止まる。--org が必要。
       対象は open で draft でない PR（Renovate の PR とアーカイブ済みリポジトリを除く）。
-      コンフリクト・CI の失敗か実行中・ウォッチ中・同じ head でレビュー済みの PR は見送る。
+      コンフリクト・CI の失敗か実行中・ウォッチ中・レビュー中・同じ head でレビュー済みの PR は見送る。
+      レビューが投稿まで終わらなかった head は、次の scan で1回だけやり直し、それも失敗したら新しい push まで見送る。
   --org <組織>
       --loop で探す GitHub の組織。
   --repo <名前>
@@ -65,7 +72,7 @@ usage() {
   --version
       版（rt vX.Y.Z）を出して終わる。
 
-  --org・--repo・--interval は --loop と一緒のときだけ使え、「--org 名前」の形だけ受け付ける。
+  --org・--repo・--interval は --loop と一緒のときだけ使え（--force は --loop と一緒には使えない）、「--org 名前」の形だけ受け付ける。
 
 チーム:
   TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -89,7 +96,8 @@ usage() {
       OWNER/REPO で自分にレビュー依頼が来た PR を、30分おきに探してレビューする
 
 終了ステータス:
-  オプションや引数が正しくないときは 1。--help・--version は 0。
+  オプションや引数が正しくないときは 1。--help・--version と、レビューを見送ったときは 0。
+  GitHub に PR を問い合わせられないなど、claude を起動する前に失敗したときは 2。
   それ以外は claude の終了ステータスを返す。--loop は Ctrl-C で止めるまで戻らない。
 USAGE
 }
@@ -116,6 +124,7 @@ TEAM=""
 REVIEW_TARGET=""
 WITH_CONSIDER=""
 PRINT=""
+FORCE=""
 LOOP=""
 ORG=""
 REPOS=""
@@ -139,6 +148,10 @@ while [ $# -gt 0 ]; do
       ;;
     --print)
       PRINT=1
+      shift
+      ;;
+    --force)
+      FORCE=1
       shift
       ;;
     --loop)
@@ -185,6 +198,7 @@ done
 if [ -n "$LOOP" ]; then
   [ -z "$REVIEW_TARGET" ] || fail "--loop と URL は同時に指定できません"
   [ -z "$PRINT" ] || fail "--loop と --print は同時に指定できません"
+  [ -z "$FORCE" ] || fail "--loop と --force は同時に指定できません"
   [ -n "$ORG" ] || fail "--loop には --org が必要です"
   INTERVAL="${INTERVAL:-15}"
   case "$INTERVAL" in
@@ -230,5 +244,18 @@ fi
 
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
+# script_dir can be relative, so pr-lock.mjs is found before leaving the current directory.
+lock_script="$(cd "$(script_dir)" && pwd)/pr-lock.mjs"
 cd "$work_root"
+# The lock is taken in this shell's pid, which exec hands to claude, so it is held while claude runs.
+# The lead's record or defer releases it once the review is over, even if the session stays open.
+status=0
+out="$(node "$lock_script" acquire ${FORCE:+--force} --pid $$ "$REVIEW_TARGET")" || status=$?
+case "$status" in
+  # The URL as GitHub writes it, which the lead records too, so the lock and the record stay in one place.
+  0) REVIEW_TARGET="$out" ;;
+  3) echo "$out"; exit 0 ;;
+  *) exit "$status" ;;
+esac
+export REVIEW_TEAM_PR_LOCK=$$
 exec claude ${PRINT:+-p} --effort xhigh --permission-mode auto "/review-team --comment --watch${WITH_CONSIDER:+ --with-consider}${reviewer_args} $REVIEW_TARGET"

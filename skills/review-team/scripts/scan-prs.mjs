@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
-import { acquireLock, escapeXml, gh, readState, scheduleEnv, statePath, stateRoot } from './watch-pr.mjs';
+import { acquireLock, escapeXml, gh, locked, prLockPath, readReviewed, readState, releaseLock, scheduleEnv, statePath, stateRoot } from './watch-pr.mjs';
 
 const execFileAsync = promisify(execFile);
 const script = fileURLToPath(import.meta.url);
 const wrapper = join(dirname(script), 'rt');
 const reviewTimeoutMs = () => Number(process.env.REVIEW_TEAM_SCAN_TIMEOUT || 5400) * 1000;
 const label = 'io.github.yuki777.review-team.scan';
+// A head whose review did not reach its post is tried once more by a later scan, then left until a new push.
+const maxAttempts = 2;
 const help = `review-team scan: 自分宛てにレビュー依頼が来たPRを探し、review-team でレビューして投稿します。
 
 node scan-prs.mjs scan --org <組織> [--repo <名前>]... [--team <TEAM>] [--with-consider]
@@ -24,11 +26,12 @@ node scan-prs.mjs uninstall  launchd の登録を外す
 
 対象: user-review-requested:@me の open で draft でないPR（アーカイブ済みのリポジトリと、Renovate（renovate[bot]）が作成したPRを除く）
 見送る条件: コンフリクト、または GitHub が mergeable を計算中。CI が失敗、または実行中。--watch でウォッチ中。
-同じ head でこの scan がレビューを始めたことがある（失敗しても、新しい push まではやり直さない）
+同じPRのレビュー（rt か watch の再レビュー）が実行中。head がレビュー済み（投稿まで終えた commit と同じ）。
+rt が同じ head のレビューを${maxAttempts}回始めて、どれも投稿まで終わらなかった（新しい push でやり直す）。
+同じ scan の中で、その head のレビューをもう始めた（失敗のやり直しは次の scan で）
 `;
 
 const scanDir = () => join(stateRoot(), 'scan');
-const startedPath = () => join(scanDir(), 'started.json');
 
 const query = `query($q: String!) { search(type: ISSUE, first: 100, query: $q) { nodes { ... on PullRequest {
   url headRefOid mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }`;
@@ -45,14 +48,19 @@ async function searchPrs(values) {
 }
 
 // Returns why a PR is left for a later scan, or null to review it now.
-async function skipReason(pr, started) {
+async function skipReason(pr, tried) {
   if (pr.mergeable === 'CONFLICTING') return 'conflict';
   if (pr.mergeable !== 'MERGEABLE') return 'mergeable unknown';
   if (pr.ci === 'FAILURE' || pr.ci === 'ERROR') return 'ci failed';
   if (pr.ci === 'PENDING' || pr.ci === 'EXPECTED') return 'ci running';
   const watch = await readState(statePath(pr.url)).catch(() => null);
   if (watch && !watch.stoppedReason) return 'watched';
-  if (started[pr.url] === pr.head) return 'started';
+  if (await locked(prLockPath(pr.url))) return 'running';
+  const reviewed = await readReviewed(pr.url);
+  if (reviewed.completedHead === pr.head) return 'reviewed';
+  if (reviewed.attemptHead === pr.head && reviewed.attempts >= maxAttempts) return 'failed';
+  // rt records nothing when it fails before starting claude (gh failing, say), so this keeps one scan from retrying it forever.
+  if (tried.has(`${pr.url} ${pr.head}`)) return 'tried';
   return null;
 }
 
@@ -99,33 +107,30 @@ async function scan(values) {
   const lock = join(scanDir(), 'scan.lock');
   if (!await acquireLock(lock)) { say('前回の scan が実行中なので終わります。'); return; }
   try {
-    const started = JSON.parse(await readFile(startedPath(), 'utf8').catch(() => '{}'));
+    const tried = new Set();
     // A review can take an hour or more, so the search is made again before each one and picks one PR that is ready now.
-    // Each review records its head, so the loop ends once every ready PR has been started.
+    // Each review is remembered with its head, so the loop ends once every ready PR has been started.
     let reviewed = 0;
     for (;;) {
       let pr;
       let skipped = 0;
       for (const found of await searchPrs(values)) {
-        const reason = await skipReason(found, started);
+        const reason = await skipReason(found, tried);
         if (!reason) { pr = found; break; }
         say(`${found.url} skip (${reason})`);
-        if (reason !== 'started') skipped++;
+        if (reason !== 'reviewed' && reason !== 'tried') skipped++;
       }
       if (!pr) {
         say(`scan 終了: レビュー ${reviewed} 件、見送り ${skipped} 件`);
         break;
       }
+      tried.add(`${pr.url} ${pr.head}`);
       say(`${pr.url} review ${pr.head.slice(0, 12)}`);
       say(`${pr.url} exit ${await review(pr.url, values)}`);
-      // Recorded even when the review fails, so it is not retried every hour on the same head.
-      // A scan stopped by a signal exits before this, so that PR is reviewed again by the next scan.
-      started[pr.url] = pr.head;
-      await writeFile(startedPath(), JSON.stringify(started, null, 2) + '\n', { mode: 0o600 });
       reviewed++;
     }
   } finally {
-    await rm(lock, { force: true });
+    await releaseLock(lock);
   }
 }
 

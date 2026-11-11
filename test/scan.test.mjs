@@ -8,9 +8,11 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const scanner = new URL('../skills/review-team/scripts/scan-prs.mjs', import.meta.url).pathname;
+const watcher = new URL('../skills/review-team/scripts/watch-pr.mjs', import.meta.url).pathname;
 const url = n => `https://github.com/acme/widget/pull/${n}`;
 
-// gh answers the search from a file the test writes; the fake claude records each review it is started for.
+// gh answers the search, and rt's question about one PR, from a file the test writes.
+// The fake claude records each review it is started for, and with claude-posts records its post as the lead does.
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-scan-'));
   const bin = join(dir, 'bin');
@@ -18,14 +20,29 @@ async function setup() {
   const search = join(dir, 'search.json');
   const ghLog = join(dir, 'gh.log');
   const claudeLog = join(dir, 'claude.log');
-  await writeFile(join(bin, 'gh'), `#!/bin/sh
-for arg; do echo "$arg" >> "${ghLog}"; done
-cat "${search}"
+  await writeFile(join(bin, 'gh'), `#!/usr/bin/env node
+const fs = require('fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(ghLog)}, args.join('\\n') + '\\n');
+const search = fs.readFileSync(${JSON.stringify(search)}, 'utf8');
+const url = args.find(arg => arg.startsWith('url='))?.slice(4);
+if (!url) { process.stdout.write(search); process.exit(0); }
+const pr = JSON.parse(search).data.search.nodes.find(node => node.url === url);
+process.stdout.write(JSON.stringify({ data: { resource: { url, state: 'OPEN', isDraft: false, headRefOid: pr.headRefOid } } }));
 `);
   await writeFile(join(bin, 'claude'), `#!/bin/sh
 # The sleep ignores SIGTERM, as a reviewer that does not stop would.
 [ -f "${join(dir, 'claude-hangs')}" ] && { trap '' TERM; sleep 60 & echo $! >> "${join(dir, 'sleep.pid')}"; trap - TERM; wait; }
 echo "$*" >> "${claudeLog}"
+if [ -f "${join(dir, 'claude-posts')}" ]; then
+  for prompt; do :; done
+  url=\${prompt##* }
+  out=$(mktemp -d "${dir}/out-XXXXXX")
+  head=$(gh api graphql -f "url=$url" | sed -n 's/.*"headRefOid":"\\([^"]*\\)".*/\\1/p')
+  printf '{"repository":{"commit":"%s","pr":{"url":"%s"}}}' "$head" "$url" > "$out/manifest.json"
+  : > "$out/reviewed.diff"
+  "${process.execPath}" "${watcher}" record --output "$out" > /dev/null
+fi
 # A push or a red CI while this review runs changes what the next search returns.
 [ -f "${join(dir, 'next-search.json')}" ] && mv "${join(dir, 'next-search.json')}" "${search}"
 `);
@@ -79,22 +96,47 @@ test('依頼が無くても、時刻付きの終了の行と件数を1行出す'
   assert.deepEqual(await reviews(), []);
 });
 
-test('同じheadは失敗しても次の回でやり直さず、新しいheadならレビューする。ウォッチ中のPRは見送る', async () => {
+test('投稿まで終わらなかったheadは次の回で1回だけやり直し、新しいheadならレビューする。ウォッチ中のPRは見送る', async () => {
   const { dir, setPrs, scan, reviews } = await setup();
   await setPrs([{ n: 1 }]);
-  await scan();
-  await scan();
+  assert.match((await scan()).stdout, / review aaa$/m);
+  // The same scan does not start the failed head again; the next scan tries it once more.
   assert.equal((await reviews()).length, 1);
+  assert.match((await scan()).stdout, / review aaa$/m);
+  assert.match((await scan()).stdout, /skip \(failed\)/);
+  assert.equal((await reviews()).length, 2);
   await setPrs([{ n: 1, head: 'bbb' }]);
   await scan();
-  assert.equal((await reviews()).length, 2);
+  assert.equal((await reviews()).length, 3);
   const watch = join(dir, 'state', 'review-team', 'watch', 'prs', 'github.com', 'acme', 'widget');
   await mkdir(watch, { recursive: true });
   await writeFile(join(watch, '1.json'), JSON.stringify({ pr: url(1), stoppedReason: null }));
   await setPrs([{ n: 1, head: 'ccc' }]);
   const { stdout } = await scan();
   assert.match(stdout, /skip \(watched\)/);
-  assert.equal((await reviews()).length, 2);
+  assert.equal((await reviews()).length, 3);
+});
+
+test('投稿を記録したheadは、ウォッチが終わったあとも見送る', async () => {
+  const { dir, env, setPrs, scan, reviews } = await setup();
+  await writeFile(join(dir, 'claude-posts'), '');
+  await setPrs([{ n: 1 }]);
+  await scan();
+  await execFileAsync(process.execPath, [watcher, 'remove', url(1)], { env });
+  const { stdout } = await scan();
+  assert.match(stdout, /skip \(reviewed\)/);
+  assert.match(stdout, /scan 終了: レビュー 0 件、見送り 0 件/);
+  assert.equal((await reviews()).length, 1);
+});
+
+test('同じPRのレビューが実行中なら、claudeを起動せずに見送る', async () => {
+  const { dir, setPrs, scan, reviews } = await setup();
+  const lock = join(dir, 'state', 'review-team', 'watch', 'prs', 'github.com', 'acme', 'widget', '1.json.lock');
+  await mkdir(join(lock, '..'), { recursive: true });
+  await writeFile(lock, String(process.pid));
+  await setPrs([{ n: 1 }]);
+  assert.match((await scan()).stdout, /skip \(running\)/);
+  assert.deepEqual(await reviews(), []);
 });
 
 test('レビューのたびに検索し直し、待っている間にCIが赤くなったPRは始めない', async () => {
@@ -161,7 +203,7 @@ test('scanをSIGINTで止めると、別のプロセスグループで動いて�
   const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
   for (let i = 0; i < 40 && alive(); i++) await new Promise(done => setTimeout(done, 50));
   assert.equal(alive(), false);
-  // The stopped review was not recorded as started, so the next scan reviews the same head again.
+  // The stopped review counts as one attempt, so the next scan tries the same head once more.
   await rm(join(dir, 'claude-hangs'));
   const { stdout } = await execFileAsync(process.execPath, [scanner, 'scan', '--org', 'acme'], { env });
   assert.match(stdout, new RegExp(`${url(1)} review aaa`));
