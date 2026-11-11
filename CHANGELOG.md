@@ -1,5 +1,11 @@
 # Changelog
 
+## [v4.0.0](https://github.com/yuki777/review-team/compare/v3.1.1...v4.0.0) - 2026-11-11
+
+- --repo を owner/name 形式にし、--org と排他にする by @yuki777 in https://github.com/yuki777/review-team/pull/156
+
+**破壊的変更**: `--repo` は `owner/name` 形式だけを受け付け、`--org` とは一緒に使えなくなりました。`rt --loop --org X --repo A` は `rt --loop --repo X/A` に書き換えてください。`scan-prs.mjs install` で launchd に登録している場合は、新しい形で登録し直してください。
+
 ## [v3.1.1](https://github.com/yuki777/review-team/compare/v3.1.0...v3.1.1) - 2026-11-11
 
 - pr1 を削除する by @yuki777 in https://github.com/yuki777/review-team/pull/153
