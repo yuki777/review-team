@@ -1,5 +1,9 @@
 # Changelog
 
+## [v3.0.3](https://github.com/yuki777/review-team/compare/v3.0.2...v3.0.3) - 2026-11-11
+
+- pr1 スクリプトを追加する by @yuki777 in https://github.com/yuki777/review-team/pull/149
+
 ## [v3.0.2](https://github.com/yuki777/review-team/compare/v3.0.1...v3.0.2) - 2026-11-10
 
 - --team の fable を Claude Fable 5.2（claude-fable-5-2）に更新 by @yuki777 in https://github.com/yuki777/review-team/pull/146
