@@ -89,21 +89,6 @@ rt <PR-URL>
 
 `--loop` は、コンフリクトや CI の失敗・実行中の PR、ウォッチ中・レビュー中の PR、同じ head でレビュー済みの PR を見送ります。投稿まで終わらなかった head は、次の scan で1回だけやり直し、それも失敗したら新しい push まで見送ります。レビューできる PR が無い回は GitHub の検索だけで終わり、claude は起動しません。
 
-## コマンドで（`pr1`）
-
-同梱の `scripts/pr1` は、自分（所属チームを含む）にレビュー依頼が来ている PR のうち、open で draft でなく CI が成功しているもの（Renovate の PR を除く）を、更新が新しい順に1件だけ探して URL を出力するコマンドです。該当が無ければ何も出力しません。`gh`（ログイン済み）と `jq` が必要です。`rt` と同じく、PATH の通ったディレクトリにリンクを張って使います。
-### pr1スクリプトをInstall(初回だけ)
-```sh
-mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/pr1 ~/.local/bin/pr1
-```
-### pr1スクリプトでPRを探す
-```
-pr1
-pr1 -q 'org:<組織>'
-```
-
-`-q`（`--query`）で渡した検索条件は基本の条件に足されます（複数回指定できます）。見つけた PR をそのままレビューするなら `url=$(pr1) && [ -n "$url" ] && rt "$url"` のようにします。
-
 ## リリース
 
 [tagpr](https://github.com/Songmu/tagpr) が、main へのマージのたびにリリース用の PR を作り直します。その PR をマージすると、`skills/review-team/VERSION` の版でタグと GitHub Release が作られます。版は既定で patch が上がり、PR に `tagpr:minor` か `tagpr:major` のラベルを付けると上げ幅が変わります。VERSION を手で書き換える必要はありません。tagpr が PR を作れるよう、リポジトリの Settings > Actions > General > Workflow permissions で「Allow GitHub Actions to create and approve pull requests」を有効にしておきます。
