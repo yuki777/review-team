@@ -1,5 +1,9 @@
 # Changelog
 
+## [v3.1.2](https://github.com/yuki777/review-team/compare/v3.1.1...v3.1.2) - 2026-11-11
+
+- --repo を owner/name 形式にし、--org と排他にする by @yuki777 in https://github.com/yuki777/review-team/pull/156
+
 ## [v3.1.1](https://github.com/yuki777/review-team/compare/v3.1.0...v3.1.1) - 2026-11-11
 
 - pr1 を削除する by @yuki777 in https://github.com/yuki777/review-team/pull/153
