@@ -1,5 +1,10 @@
 # Changelog
 
+## [v3.1.1](https://github.com/yuki777/review-team/compare/v3.1.0...v3.1.1) - 2026-11-11
+
+- pr1 を削除する by @yuki777 in https://github.com/yuki777/review-team/pull/153
+- README に「ループでレビュー」の節を足す by @yuki777 in https://github.com/yuki777/review-team/pull/155
+
 ## [v3.1.0](https://github.com/yuki777/review-team/compare/v3.0.3...v3.1.0) - 2026-11-11
 
 - LLM起動前にPR単位のロックを取り、同じheadの重複レビューを防ぐ by @yuki777 in https://github.com/yuki777/review-team/pull/151
