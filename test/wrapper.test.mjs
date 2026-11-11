@@ -13,7 +13,7 @@ const prUrl = 'https://example.test/acme/widget/pull/7';
 
 // The fake claude records its working directory and arguments, one argument per line, and the lock it was given.
 // The fake gh answers rt's question about the PR with the head in <dir>/head (aaa if missing), or fails with gh-fails.
-// It answers the latest release with <dir>/latest, or with the current VERSION when that file is missing.
+// It answers the latest release with <dir>/latest, or with the current VERSION when that file is missing, and fails it with latest-fails.
 // command を渡すと、bash を通さずにそのパス（シンボリックリンクなど）を直接実行する。dir を渡すと、その状態で続けて実行する。
 async function setup(dir) {
   dir ??= await mkdtemp(join(tmpdir(), 'review-team-wrapper-'));
@@ -27,6 +27,7 @@ for arg; do echo "$arg" >> "${join(dir, 'claude.log')}"; done
 `);
   await writeFile(join(bin, 'gh'), `#!/bin/sh
 [ -f "${join(dir, 'gh-fails')}" ] && { echo 'gh: network down' >&2; exit 1; }
+[ "$1 $2" = "api repos/yuki777/review-team/releases/latest" ] && [ -f "${join(dir, 'latest-fails')}" ] && exit 1
 [ "$1 $2" = "api repos/yuki777/review-team/releases/latest" ] && { cat "${join(dir, 'latest')}" 2>/dev/null || echo "v$(cat "${versionFile}")"; exit 0; }
 head=$(cat "${join(dir, 'head')}" 2>/dev/null || echo aaa)
 printf '{"data":{"resource":{"url":"${prUrl}","state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$head"
@@ -244,7 +245,7 @@ test('GitHubに問い合わせられなければ、claudeを起動せず、開�
   await assert.rejects(readFile(`${prState(dir)}.lock`));
 });
 
-test('最新リリースと版が違えば警告を1行出してからレビューし、同じなら何も出さない', async () => {
+test('最新リリースと版が違えば警告を1行出してからレビューし、同じか確かめられなければ何も出さない', async () => {
   const { dir } = await setup();
   await writeFile(join(dir, 'latest'), 'v99.0.0\n');
   const outdated = await run([prUrl], undefined, dir);
@@ -254,7 +255,13 @@ test('最新リリースと版が違えば警告を1行出してからレビュ�
   assert.equal(outdated.stderr, `rt: 新しい版 v99.0.0 があります（いまは ${current}）。npx skills update review-team -g（git のチェックアウトなら git pull。--loop は止めてから）で更新してください\n`);
   const upToDate = await run([prUrl]);
   assert.equal(upToDate.code, 0);
-  assert.doesNotMatch(upToDate.stderr, /新しい版/);
+  assert.equal(upToDate.stderr, '');
+  const { dir: failing } = await setup();
+  await writeFile(join(failing, 'latest-fails'), '');
+  const unknown = await run([prUrl], undefined, failing);
+  assert.equal(unknown.code, 0);
+  assert.notEqual(unknown.argv, null);
+  assert.equal(unknown.stderr, '');
 });
 
 test('相対パスで起動しても動き、claudeにはGitHubの表記のURLを渡す', async () => {

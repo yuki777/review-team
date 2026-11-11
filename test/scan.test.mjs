@@ -9,9 +9,10 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const scanner = new URL('../skills/review-team/scripts/scan-prs.mjs', import.meta.url).pathname;
 const watcher = new URL('../skills/review-team/scripts/watch-pr.mjs', import.meta.url).pathname;
+const versionFile = new URL('../skills/review-team/VERSION', import.meta.url).pathname;
 const url = n => `https://github.com/acme/widget/pull/${n}`;
 
-// gh answers the search, and rt's question about one PR, from a file the test writes.
+// gh answers the search, and rt's question about one PR, from a file the test writes, and the latest release with the current VERSION.
 // The fake claude records each review it is started for, and with claude-posts records its post as the lead does.
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-scan-'));
@@ -24,6 +25,7 @@ async function setup() {
 const fs = require('fs');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(ghLog)}, args.join('\\n') + '\\n');
+if (args[1] === 'repos/yuki777/review-team/releases/latest') { process.stdout.write('v' + fs.readFileSync(${JSON.stringify(versionFile)}, 'utf8')); process.exit(0); }
 const search = fs.readFileSync(${JSON.stringify(search)}, 'utf8');
 const url = args.find(arg => arg.startsWith('url='))?.slice(4);
 if (!url) { process.stdout.write(search); process.exit(0); }
