@@ -2,7 +2,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { link, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +36,7 @@ node watch-pr.mjs uninstall  launchd の登録を外す
 
 解除する条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した（上限の回を投稿した次の tick で解除する）。状態ファイルを消すので list に出なくなる。理由は tick.log に remove (merged) のように残る
 停止する条件: 失敗が${maxFailures}回続いた。list に停止(failed)として残る。remove で消すか、--watch で登録し直す
-見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRの再レビューが実行中
+見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRのレビュー（rt か再レビュー）が実行中
 追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
 `;
 
@@ -46,7 +46,7 @@ export function stateRoot() {
 
 const watchDir = () => join(stateRoot(), 'watch');
 
-function parsePrUrl(url) {
+export function parsePrUrl(url) {
   const [, host, owner, repo, number] = String(url).match(/^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)$/) ?? [];
   if (!host) throw new Error(`PRのURLを解釈できません: ${url}`);
   return { host, owner, repo, number };
@@ -61,7 +61,7 @@ export async function readState(file) {
   return JSON.parse(await readFile(file, 'utf8'));
 }
 
-async function writeState(file, state) {
+export async function writeState(file, state) {
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
   await writeFile(tmp, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
@@ -88,38 +88,95 @@ function alive(pid) {
   try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
 }
 
-// A lock is a file holding the owner's pid. A lock whose owner has exited is taken over.
-export async function acquireLock(path) {
+// A lock is a file holding the owner's pid. The file is linked in with its content already written,
+// so a reader never sees an empty lock. A lock whose owner has exited is taken over.
+export async function acquireLock(path, pid = process.pid) {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  for (let i = 0; i < 2; i++) {
-    try {
-      const handle = await open(path, 'wx', 0o600);
-      await handle.writeFile(String(process.pid));
-      await handle.close();
-      return true;
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      const pid = Number(await readFile(path, 'utf8').catch(() => ''));
-      if (pid && alive(pid)) return false;
-      await rm(path, { force: true });
+  const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(tmp, String(pid), { mode: 0o600 });
+  try {
+    for (let i = 0; i < 3; i++) {
+      try {
+        await link(tmp, path);
+        return true;
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
+      const owner = await lockOwner(path);
+      if (!owner) continue;
+      if (alive(owner)) return false;
+      if (!await reclaim(path, owner)) return false;
     }
+    return false;
+  } finally {
+    await rm(tmp, { force: true });
   }
-  return false;
 }
 
-async function locked(path) {
-  const pid = Number(await readFile(path, 'utf8').catch(() => ''));
+const lockOwner = async path => Number(await readFile(path, 'utf8').catch(() => ''));
+
+// Only the process that creates the claim for this dead owner removes the lock, and only while it still holds
+// that owner, so two processes that saw the same stale lock cannot remove a lock the other has just taken.
+// A claim left by a process killed in these few milliseconds is cleared after a minute.
+async function reclaim(path, owner) {
+  const claim = `${path}.reclaim-${owner}`;
+  const old = await stat(claim).catch(() => null);
+  if (old && Date.now() - old.mtimeMs > 60000) await rm(claim, { force: true });
+  try {
+    await writeFile(claim, String(process.pid), { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if (error.code === 'EEXIST') return false;
+    throw error;
+  }
+  try {
+    if (await lockOwner(path) === owner) await rm(path, { force: true });
+    return true;
+  } finally {
+    await rm(claim, { force: true });
+  }
+}
+
+// Removes the lock only while it is still held by pid.
+export async function releaseLock(path, pid = process.pid) {
+  if (await lockOwner(path) === pid) await rm(path, { force: true });
+}
+
+export async function locked(path) {
+  const pid = await lockOwner(path);
   return Boolean(pid) && alive(pid);
 }
+
+// The lock of a PR is held from the start of a review until its post is recorded, by whichever of rt and
+// a watch re-review started it, so the same PR is never reviewed twice at once.
+export const prLockPath = url => `${statePath(url)}.lock`;
+
+// What happened to the reviews rt started for a PR: the last commit whose post was recorded, and how many
+// times rt started a review of attemptHead. Kept beside the watch state, so it outlives the watch.
+export const reviewedPath = url => `${statePath(url)}.reviewed`;
+export const readReviewed = url => readState(reviewedPath(url)).catch(() => ({}));
 
 // Why tick or remove ended a watch, kept beside the state file for wait. Registering the PR again clears it.
 const removedPath = file => `${file}.removed`;
 
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 
+// Called first by record and defer. A post records its commit as reviewed; either way the review is over,
+// so the lock rt took for it is released and a watch re-review of a later push may start.
+async function finishReview(values, posted) {
+  if (!values.output) throw new Error('--outputが必要です。');
+  const manifest = JSON.parse(await readFile(join(resolve(values.output), 'manifest.json'), 'utf8'));
+  const url = manifest.repository?.pr?.url;
+  if (!url) throw new Error('--prで実行したレビューではありません。');
+  if (posted) {
+    await writeState(reviewedPath(url), { ...await readReviewed(url),
+      completedHead: manifest.repository.commit, completedAt: new Date().toISOString(), attempts: 0 });
+  }
+  const token = Number(process.env.REVIEW_TEAM_PR_LOCK);
+  if (token) await releaseLock(prLockPath(url), token);
+}
+
 // Reads the watch for the PR of a runner output, and the state a new watch would start from.
 async function load(values) {
-  if (!values.output) throw new Error('--outputが必要です。');
   const output = resolve(values.output);
   const manifest = JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
   const url = manifest.repository?.pr?.url;
@@ -133,8 +190,8 @@ async function load(values) {
   const found = await readState(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
   // A stopped watch is registered afresh, so --watch on a PR whose watch failed starts a new one.
   const previous = found?.stoppedReason ? null : found;
-  // While a re-review runs, a missing or stopped watch was removed or stopped meanwhile; its post must not bring it back.
-  if (!previous && await locked(`${file}.lock`)) {
+  // In a re-review, a missing or stopped watch was removed or stopped meanwhile; its post must not bring it back.
+  if (!previous && process.env.REVIEW_TEAM_WATCH_POSTING) {
     console.log(JSON.stringify({ registered: false, state: file, reason: 'ウォッチは再レビュー中に解除または停止されたので、登録し直しません。' }, null, 2));
     return null;
   }
@@ -150,6 +207,7 @@ async function load(values) {
 }
 
 async function record(values) {
+  await finishReview(values, true);
   const loaded = await load(values);
   if (!loaded) return;
   const { output, manifest, file, previous, state, now } = loaded;
@@ -165,6 +223,7 @@ async function record(values) {
 // Registers a PR whose head kept moving during the first review, so nothing was posted.
 // With no reviewed commit, tick reviews the head once it settles and makes the first post.
 async function defer(values) {
+  await finishReview(values, false);
   const loaded = await load(values);
   if (!loaded) return;
   const { file, previous, state } = loaded;
@@ -180,7 +239,7 @@ export async function gh(args) {
   return (await execFileAsync('gh', args, { maxBuffer: 64 * 1024 * 1024, timeout: 120000 })).stdout;
 }
 
-async function fetchPr(url) {
+export async function fetchPr(url) {
   const query = 'query($url: URI!) { resource(url: $url) { ... on PullRequest { state isDraft headRefOid } } }';
   const out = JSON.parse(await gh(['api', 'graphql', '--hostname', parsePrUrl(url).host, '-f', `query=${query}`, '-f', `url=${url}`]));
   const pr = out.data?.resource;
@@ -194,7 +253,7 @@ async function decide(state, file, now = Date.now()) {
   // Earlier versions kept watches stopped for other reasons; they are removed now.
   if (state.stoppedReason) return { action: 'remove', reason: state.stoppedReason };
   // run() counts the re-review when it starts, so the limit is checked only after this, never during the last re-review.
-  if (await locked(`${file}.lock`)) return { action: 'skip', reason: 'running' };
+  if (await locked(prLockPath(state.pr))) return { action: 'skip', reason: 'running' };
   // Conditions that need only the state come first, so an expired watch ends even while GitHub is unreachable.
   if (now >= Date.parse(state.expiresAt)) return { action: 'remove', reason: 'expired' };
   if (state.failures >= maxFailures) return { action: 'stop', reason: 'failed' };
@@ -243,7 +302,7 @@ async function tick() {
       }
     }
   } finally {
-    await rm(tickLock, { force: true });
+    await releaseLock(tickLock);
   }
 }
 
@@ -259,7 +318,8 @@ async function supersede(file, head, ranReview, refund = ranReview) {
 // Runs one re-review for a watched PR. The lead records a successful post with `record`,
 // so a run that ends without moving lastPostedAt counts as a failure, unless the head moved meanwhile.
 async function run(file) {
-  if (!await acquireLock(`${file}.lock`)) return;
+  const lock = `${file}.lock`;
+  if (!await acquireLock(lock)) return;
   // Whoever creates this file first decides: the lead before it starts a review on GitHub, or run()
   // before it stops the lead. A run stopped while posting would leave a draft that blocks the next post.
   const posting = `${file}.posting`;
@@ -349,7 +409,7 @@ async function run(file) {
     }
   } finally {
     await rm(posting, { force: true });
-    await rm(`${file}.lock`, { force: true });
+    await releaseLock(lock);
   }
 }
 
@@ -357,7 +417,7 @@ async function list() {
   for (const file of await listStateFiles()) {
     const s = await readState(file).catch(() => null);
     if (!s) continue;
-    const status = s.stoppedReason ? `停止(${s.stoppedReason})` : await locked(`${file}.lock`) ? '再レビュー中' : 'ウォッチ中';
+    const status = s.stoppedReason ? `停止(${s.stoppedReason})` : await locked(prLockPath(s.pr)) ? 'レビュー中' : 'ウォッチ中';
     console.log(`${s.pr}\t${status}\t再レビュー ${s.rereviews}/${s.maxRereviews}\t失敗 ${s.failures}\t期限 ${s.expiresAt}\tレビュー済み ${s.lastReviewedCommit?.slice(0, 12)}`);
   }
 }
