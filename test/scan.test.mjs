@@ -28,7 +28,7 @@ const search = fs.readFileSync(${JSON.stringify(search)}, 'utf8');
 const url = args.find(arg => arg.startsWith('url='))?.slice(4);
 if (!url) { process.stdout.write(search); process.exit(0); }
 const pr = JSON.parse(search).data.search.nodes.find(node => node.url === url);
-process.stdout.write(JSON.stringify({ data: { resource: { state: 'OPEN', isDraft: false, headRefOid: pr.headRefOid } } }));
+process.stdout.write(JSON.stringify({ data: { resource: { url, state: 'OPEN', isDraft: false, headRefOid: pr.headRefOid } } }));
 `);
   await writeFile(join(bin, 'claude'), `#!/bin/sh
 # The sleep ignores SIGTERM, as a reviewer that does not stop would.

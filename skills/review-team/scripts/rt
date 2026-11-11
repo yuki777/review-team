@@ -244,14 +244,17 @@ fi
 
 work_root="${XDG_STATE_HOME:-$HOME/.local/state}/review-team"
 mkdir -p "$work_root"
+# script_dir can be relative, so pr-lock.mjs is found before leaving the current directory.
+lock_script="$(cd "$(script_dir)" && pwd)/pr-lock.mjs"
 cd "$work_root"
 # The lock is taken in this shell's pid, which exec hands to claude, so it is held while claude runs.
 # The lead's record or defer releases it once the review is over, even if the session stays open.
 status=0
-node "$(script_dir)/pr-lock.mjs" acquire ${FORCE:+--force} --pid $$ "$REVIEW_TARGET" || status=$?
+out="$(node "$lock_script" acquire ${FORCE:+--force} --pid $$ "$REVIEW_TARGET")" || status=$?
 case "$status" in
-  0) ;;
-  3) exit 0 ;;
+  # The URL as GitHub writes it, which the lead records too, so the lock and the record stay in one place.
+  0) REVIEW_TARGET="$out" ;;
+  3) echo "$out"; exit 0 ;;
   *) exit "$status" ;;
 esac
 export REVIEW_TEAM_PR_LOCK=$$

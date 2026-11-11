@@ -8,7 +8,8 @@ const script = fileURLToPath(import.meta.url);
 const help = `review-team pr-lock: rt がレビューを始める前に、同じPRのレビューを止めるかを決めます。
 
 node pr-lock.mjs acquire [--force] --pid <PID> <PR-URL>
-    GitHub で PR の head を確かめ、PR のロックを PID の名前で取る。
+    GitHub で PR の head を確かめ、PR のロックを PID の名前で取る。取れたら GitHub の表記の PR の URL を出す。
+    （リードが記録する URL と同じ表記にして、ロックとレビュー済みの記録を同じ場所に置く）
     PID のプロセスが終わるか、そのレビューの投稿が record・defer で記録されるまで、ほかのレビューは始まらない。
     終了ステータス: 0 = レビューを始める。3 = 見送る（理由を1行出す）。2 = GitHub に問い合わせられないなどの失敗。
 見送る条件: 同じPRのレビュー（rt か watch の再レビュー）が実行中。
@@ -19,10 +20,10 @@ const skip = message => { console.log(message); process.exitCode = 3; };
 
 // Asks GitHub before taking the lock, so a failure leaves nothing behind.
 // Each start is counted before the review runs, so a review killed midway still counts as an attempt.
-async function acquire(values, url) {
+async function acquire(values, given) {
   const pid = Number(values.pid);
   if (!Number.isInteger(pid) || pid <= 0) throw new Error('--pidにはロックを持つプロセスのpidを指定してください。');
-  const { head } = await fetchPr(url);
+  const { url, head } = await fetchPr(given);
   if (!await acquireLock(prLockPath(url), pid)) return skip(`同じPRのレビューが実行中なので見送ります: ${url}`);
   const reviewed = await readReviewed(url);
   if (!values.force && reviewed.completedHead === head) {
@@ -32,6 +33,7 @@ async function acquire(values, url) {
   }
   const attempts = reviewed.attemptHead === head ? (reviewed.attempts ?? 0) + 1 : 1;
   await writeState(reviewedPath(url), { ...reviewed, attemptHead: head, attempts });
+  console.log(url);
 }
 
 async function main() {

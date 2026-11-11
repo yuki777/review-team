@@ -27,7 +27,7 @@ for arg; do echo "$arg" >> "${join(dir, 'claude.log')}"; done
   await writeFile(join(bin, 'gh'), `#!/bin/sh
 [ -f "${join(dir, 'gh-fails')}" ] && { echo 'gh: network down' >&2; exit 1; }
 head=$(cat "${join(dir, 'head')}" 2>/dev/null || echo aaa)
-printf '{"data":{"resource":{"state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$head"
+printf '{"data":{"resource":{"url":"${prUrl}","state":"OPEN","isDraft":false,"headRefOid":"%s"}}}' "$head"
 `);
   await chmod(join(bin, 'claude'), 0o755);
   await chmod(join(bin, 'gh'), 0o755);
@@ -240,6 +240,16 @@ test('GitHubに問い合わせられなければ、claudeを起動せず、開�
   assert.notEqual(stderr, '');
   await assert.rejects(readFile(`${prState(dir)}.reviewed`));
   await assert.rejects(readFile(`${prState(dir)}.lock`));
+});
+
+test('相対パスで起動しても動き、claudeにはGitHubの表記のURLを渡す', async () => {
+  const ctx = await setup();
+  const scripts = join(skillDir, 'scripts');
+  const child = spawn('bash', ['rt', 'https://example.test/ACME/widget/pull/7'], { cwd: scripts, env: ctx.env, stdio: 'ignore' });
+  assert.equal(await new Promise(done => child.on('exit', done)), 0);
+  const argv = (await readFile(join(ctx.dir, 'claude.log'), 'utf8')).trimEnd().split('\n');
+  assert.equal(argv.at(-1), prompt([]));
+  assert.ok(await readFile(`${prState(ctx.dir)}.lock`, 'utf8'));
 });
 
 // The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.

@@ -549,3 +549,34 @@ test('ウォッチが解除されたあとの再レビューの記録でも、�
   await assert.rejects(stat(t.stateFile));
   assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'bbb');
 });
+
+test('rtのロックはcronの行に入らず、deferでも外れる。rtのレビュー中はtickが再レビューを見送る', async () => {
+  const t = await setup();
+  await writeFile(t.diff, 'diff-a\n');
+  await t.register('aaa');
+  await t.setPr({ headRefOid: 'bbb' });
+  const lock = `${t.stateFile}.lock`;
+  await writeFile(lock, String(process.pid));
+  assert.match(await t.tick(), / skip \(running\)$/m);
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'bbb', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  const { stdout } = await execFileAsync(process.execPath, [watcher, 'defer', '--output', out],
+    { env: { ...t.env, REVIEW_TEAM_PR_LOCK: String(process.pid) } });
+  if (process.platform !== 'darwin') assert.doesNotMatch(JSON.parse(stdout).schedule.cron, /REVIEW_TEAM_PR_LOCK/);
+  await assert.rejects(stat(lock));
+  // defer posted nothing, so the head is not recorded as reviewed.
+  assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'aaa');
+});
+
+test('中身の無いロックは、1分たつまで取らず、過ぎたら回収する', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-team-lock-'));
+  const lock = join(dir, 'pr.lock');
+  await writeFile(lock, '');
+  const { acquireLock } = await import(watcher);
+  assert.equal(await acquireLock(lock), false);
+  const old = new Date(Date.now() - 120000);
+  await utimes(lock, old, old);
+  assert.equal(await acquireLock(lock), true);
+  assert.equal(await readFile(lock, 'utf8'), String(process.pid));
+});

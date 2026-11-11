@@ -103,8 +103,14 @@ export async function acquireLock(path, pid = process.pid) {
         if (error.code !== 'EEXIST') throw error;
       }
       const owner = await lockOwner(path);
-      if (!owner) continue;
-      if (alive(owner)) return false;
+      if (!owner) {
+        // An empty or broken lock, left by an older version killed while writing it, is taken over after a minute.
+        const found = await stat(path).catch(() => null);
+        if (!found) continue;
+        if (Date.now() - found.mtimeMs < 60000) return false;
+      } else if (alive(owner)) {
+        return false;
+      }
       if (!await reclaim(path, owner)) return false;
     }
     return false;
@@ -113,7 +119,7 @@ export async function acquireLock(path, pid = process.pid) {
   }
 }
 
-const lockOwner = async path => Number(await readFile(path, 'utf8').catch(() => ''));
+const lockOwner = async path => Number(await readFile(path, 'utf8').catch(() => '')) || 0;
 
 // Only the process that creates the claim for this dead owner removes the lock, and only while it still holds
 // that owner, so two processes that saw the same stale lock cannot remove a lock the other has just taken.
@@ -160,9 +166,9 @@ const removedPath = file => `${file}.removed`;
 
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 
-// Called first by record and defer. A post records its commit as reviewed; either way the review is over,
-// so the lock rt took for it is released and a watch re-review of a later push may start.
-async function finishReview(values, posted) {
+// Called first by record and defer, so a post is recorded as reviewed even when the watch was removed meanwhile.
+// Returns the PR, whose lock taken by rt is released once the watch state is written (releaseReview).
+async function markReviewed(values, posted) {
   if (!values.output) throw new Error('--outputが必要です。');
   const manifest = JSON.parse(await readFile(join(resolve(values.output), 'manifest.json'), 'utf8'));
   const url = manifest.repository?.pr?.url;
@@ -171,6 +177,12 @@ async function finishReview(values, posted) {
     await writeState(reviewedPath(url), { ...await readReviewed(url),
       completedHead: manifest.repository.commit, completedAt: new Date().toISOString(), attempts: 0 });
   }
+  return url;
+}
+
+// The review is over, so a watch re-review of a later push may start. The watch state is already written,
+// so a tick that sees the lock gone also sees the commit as reviewed.
+async function releaseReview(url) {
   const token = Number(process.env.REVIEW_TEAM_PR_LOCK);
   if (token) await releaseLock(prLockPath(url), token);
 }
@@ -207,7 +219,15 @@ async function load(values) {
 }
 
 async function record(values) {
-  await finishReview(values, true);
+  const url = await markReviewed(values, true);
+  try {
+    await recordWatch(values);
+  } finally {
+    await releaseReview(url);
+  }
+}
+
+async function recordWatch(values) {
   const loaded = await load(values);
   if (!loaded) return;
   const { output, manifest, file, previous, state, now } = loaded;
@@ -223,7 +243,15 @@ async function record(values) {
 // Registers a PR whose head kept moving during the first review, so nothing was posted.
 // With no reviewed commit, tick reviews the head once it settles and makes the first post.
 async function defer(values) {
-  await finishReview(values, false);
+  const url = await markReviewed(values, false);
+  try {
+    await deferWatch(values);
+  } finally {
+    await releaseReview(url);
+  }
+}
+
+async function deferWatch(values) {
   const loaded = await load(values);
   if (!loaded) return;
   const { file, previous, state } = loaded;
@@ -240,11 +268,11 @@ export async function gh(args) {
 }
 
 export async function fetchPr(url) {
-  const query = 'query($url: URI!) { resource(url: $url) { ... on PullRequest { state isDraft headRefOid } } }';
+  const query = 'query($url: URI!) { resource(url: $url) { ... on PullRequest { url state isDraft headRefOid } } }';
   const out = JSON.parse(await gh(['api', 'graphql', '--hostname', parsePrUrl(url).host, '-f', `query=${query}`, '-f', `url=${url}`]));
   const pr = out.data?.resource;
   if (!pr?.state) throw new Error(`PRを取得できません: ${url}`);
-  return { state: pr.state, isDraft: pr.isDraft, head: pr.headRefOid };
+  return { url: pr.url, state: pr.state, isDraft: pr.isDraft, head: pr.headRefOid };
 }
 
 // Returns what tick should do with one watched PR. Only the gh queries and the state file decide it.
@@ -463,7 +491,7 @@ export const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;
 
 // launchd and cron start jobs with a minimal environment, so the current PATH, state directory and CLI overrides are copied in.
 export const scheduleEnv = () => Object.entries(process.env)
-  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && key !== 'REVIEW_TEAM_DEPTH' && key !== 'REVIEW_TEAM_WATCH_POSTING'));
+  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && !['REVIEW_TEAM_DEPTH', 'REVIEW_TEAM_WATCH_POSTING', 'REVIEW_TEAM_PR_LOCK'].includes(key)));
 
 function plist() {
   const env = scheduleEnv();
