@@ -1,8 +1,10 @@
 # Changelog
 
-## [v4.0.2](https://github.com/yuki777/review-team/compare/v4.0.1...v4.0.2) - 2026-11-12
+## [v4.1.0](https://github.com/yuki777/review-team/compare/v4.0.1...v4.1.0) - 2026-11-12
 
 - rt --loop の --interval 既定値を15分から10分にする by @yuki777 in https://github.com/yuki777/review-team/pull/162
+
+**動作の変更**: `rt --loop` で `--interval` を省略したときの待ち時間が15分から10分になりました。従来どおりにしたいときは `--interval 15` を付けてください。
 
 ## [v4.0.1](https://github.com/yuki777/review-team/compare/v4.0.0...v4.0.1) - 2026-11-11
 
