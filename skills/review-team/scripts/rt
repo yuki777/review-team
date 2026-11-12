@@ -25,7 +25,7 @@ warn_if_outdated() {
   latest="$(gh api repos/yuki777/review-team/releases/latest --jq .tag_name 2>/dev/null)" || return 0
   current="$(version)"
   [ -z "$latest" ] || [ "$latest" = "$current" ] ||
-    echo "rt: 新しい版 $latest があります（いまは $current）。npx skills update review-team -g（git のチェックアウトなら git pull。--loop は止めてから）で更新してください" >&2
+    echo "rt: 新しい版 ${latest} があります（いまは ${current}）。npx skills update review-team -g（git のチェックアウトなら git pull。--loop は止めてから）で更新してください" >&2
 }
 
 usage() {
@@ -234,14 +234,14 @@ if [ -n "$TEAM" ]; then
     member="${item%%:*}"
     effort=high
     case "$item" in *:*) effort="${item#*:}" ;; esac
-    spec="$(member_spec "$member")" || fail "不明なメンバーです: $member（チーム: $TEAM）"
+    spec="$(member_spec "$member")" || fail "不明なメンバーです: ${member}（チーム: ${TEAM}）"
     efforts=" ${spec#* } "
     case "$efforts" in
       *" $effort "*) ;;
-      *) fail "$member の effort に「$effort」は使えません（使える effort:${efforts% }）" ;;
+      *) fail "$member の effort に「${effort}」は使えません（使える effort:${efforts% }）" ;;
     esac
     case "$seen" in
-      *" $member "*) fail "メンバーが重複しています: $member（チーム: $TEAM）" ;;
+      *" $member "*) fail "メンバーが重複しています: ${member}（チーム: ${TEAM}）" ;;
     esac
     seen="$seen$member "
     reviewer_args="$reviewer_args --reviewer ${spec%% *}:$effort"

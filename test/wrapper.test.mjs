@@ -322,3 +322,11 @@ test('--loopの引数の誤りは、scanを起動せずに終了コード1で止
     assert.deepEqual([scans, sleeps, claude], [[], [], false], args.join(' '));
   }
 });
+
+// macOS の bash 3.2 は変数名の終わりをバイトごとに isalnum() で判定し、UTF-8 の上位バイトを英字とみなすことがある。
+// $current） のように書くと変数名が current\xEF… と読まれ、set -u で unbound variable になる（Linux では再現しない）。
+test('rtでは$変数のすぐ後ろに非ASCII文字を書かない（${変数}で囲む）', async () => {
+  const lines = (await readFile(wrapper, 'utf8')).split('\n');
+  const bad = lines.flatMap((line, i) => (/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/.test(line) ? [`${i + 1}: ${line.trim()}`] : []));
+  assert.deepEqual(bad, []);
+});
