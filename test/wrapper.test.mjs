@@ -300,7 +300,7 @@ test('--loopはscanに組織・リポジトリ・チーム・--with-considerを�
     '--repo', 'other/gadget.js', '--team', 'opus:xhigh-sol', '--with-consider']);
   assert.equal(code, 'SIGTERM');
   assert.deepEqual(scans, [`${scanner} scan --repo acme/widget --repo other/gadget.js --team opus:xhigh-sol --with-consider`]);
-  assert.deepEqual(sleeps, ['900']);
+  assert.deepEqual(sleeps, ['600']);
   assert.equal(claude, false);
   assert.match(stderr, /^rt: 新しい版 v0\.0\.1 があります/);
   const plain = await loop(['--loop', '--org', 'acme', '--interval', '30']);
