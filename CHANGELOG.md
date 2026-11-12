@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.1.1](https://github.com/yuki777/review-team/compare/v4.1.0...v4.1.1) - 2026-11-12
+
+- PR ウォッチの既定期限を6時間から12時間にする by @yuki777 in https://github.com/yuki777/review-team/pull/166
+
 ## [v4.1.0](https://github.com/yuki777/review-team/compare/v4.0.1...v4.1.0) - 2026-11-12
 
 - rt --loop の --interval 既定値を15分から10分にする by @yuki777 in https://github.com/yuki777/review-team/pull/162
