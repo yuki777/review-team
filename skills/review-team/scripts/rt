@@ -77,7 +77,7 @@ usage() {
   --repo <owner/name>
       --loop で、このリポジトリだけを探す。複数回指定でき、別の組織のリポジトリも混ぜられる。
   --interval <分>
-      --loop で scan と scan の間に待つ分。1以上の整数。省略すると 15。
+      --loop で scan と scan の間に待つ分。1以上の整数。省略すると 10。
   -h, --help
       このヘルプを出して終わる。
   --version
@@ -215,7 +215,7 @@ if [ -n "$LOOP" ]; then
   [ -z "$FORCE" ] || fail "--loop と --force は同時に指定できません"
   { [ -n "$ORG" ] || [ -n "$REPOS" ]; } && { [ -z "$ORG" ] || [ -z "$REPOS" ]; } ||
     fail "--loop には --org か --repo のどちらか一方を指定してください"
-  INTERVAL="${INTERVAL:-15}"
+  INTERVAL="${INTERVAL:-10}"
   case "$INTERVAL" in
     ''|0*|*[!0-9]*) fail "--interval は1以上の整数（分）で指定してください: $INTERVAL" ;;
   esac
