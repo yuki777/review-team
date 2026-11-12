@@ -1,8 +1,10 @@
 # Changelog
 
-## [v4.1.1](https://github.com/yuki777/review-team/compare/v4.1.0...v4.1.1) - 2026-11-12
+## [v4.2.0](https://github.com/yuki777/review-team/compare/v4.1.0...v4.2.0) - 2026-11-12
 
 - PR ウォッチの既定期限を6時間から12時間にする by @yuki777 in https://github.com/yuki777/review-team/pull/166
+
+**動作の変更**: `--watch`（rt と rt --loop）で登録した PR のウォッチが、6時間ではなく12時間で外れるようになりました。登録済みのウォッチの期限は変わりません。
 
 ## [v4.1.0](https://github.com/yuki777/review-team/compare/v4.0.1...v4.1.0) - 2026-11-12
 
