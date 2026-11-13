@@ -55,13 +55,13 @@ npx skills remove review-team -g
 | `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、12時間、再レビュー5回のどれかで解除） |
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
-| 言葉での指定 | 「Fable も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
+| 言葉での指定 | 「Sol も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-既定のレビュアーは Claude Opus 5.5・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
+既定のレビュアーは Claude Fable 5.2・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
 ## コマンドで（`rt`）
 
-同梱の `scripts/rt` は、どのディレクトリから実行しても、状態ディレクトリ（`${XDG_STATE_HOME:-~/.local/state}/review-team`）で claude を起動して `/review-team --comment --watch <PR-URL>` を実行するコマンドです。つまり、プレビューの承認を待たずに PR へ Act On の指摘を投稿し、以後の push も、落ち着いてから自動で再レビューします（見回りの登録と解除の条件は上の `--watch`）。PATH の通ったディレクトリにリンクを張って使います。
+同梱の `scripts/rt` は、どのディレクトリから実行しても、状態ディレクトリ（`${XDG_STATE_HOME:-~/.local/state}/review-team`）で claude を起動して `/review-team --comment --watch <PR-URL>` を実行するコマンドです。つまり、プレビューの承認を待たずに PR へ Act On の指摘を投稿し、以後の push も、落ち着いてから自動で再レビューします（見回りの登録と解除の条件は上の `--watch`）。主担当の claude は Opus 5.5（`claude-opus-5-5`）・effort xhigh で動きます。ウォッチの再レビューの主担当も、どこから登録したウォッチでも Opus 5.5 です（effort は登録時の値）。`/review-team` を直接呼んだときは、そのセッションのモデルが主担当になります。PATH の通ったディレクトリにリンクを張って使います。
 ### rtスクリプトをInstall(初回だけ)
 ```sh
 mkdir -p ~/.local/bin && ln -s ~/.agents/skills/review-team/scripts/rt ~/.local/bin/rt
@@ -95,8 +95,8 @@ rt は起動のたび（`--loop` では scan のたび）に GitHub の最新リ
 `rt --loop` は、PR を1件ずつ指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューし、それを繰り返します。端末を開いたまま動かしておけば、依頼が来た PR が順にレビューされて投稿されます。
 
 ```
-rt --loop --repo <組織>/<リポジトリ> --repo <組織>/<別のリポジトリ> --team fable:xhigh-astra:xhigh
-rt --loop --org <組織> --team fable:xhigh-astra:xhigh
+rt --loop --repo <組織>/<リポジトリ> --repo <組織>/<別のリポジトリ>
+rt --loop --org <組織> --team fable:max-astra:xhigh
 ```
 
 - **探す PR**: 自分にレビュー依頼が来ている（`user-review-requested:@me`）open で draft でない PR。`--repo <owner/name>` を付けると、そのリポジトリだけを探す（複数回指定できる）。`--org <組織>` を付けると、その組織の全リポジトリを探す。`--org` と `--repo` は一緒には使えない（GitHub の検索では `org:` と `repo:` が絞り込みでなく和集合になるため）。Renovate（renovate[bot]）が作った PR とアーカイブ済みのリポジトリは対象にしない。

@@ -76,7 +76,7 @@ test('自分宛ての依頼を組織で検索し、コンフリクト・計算�
   assert.match(stdout, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} scan 終了: レビュー 2 件、見送り 6 件$/m);
   const team = '--reviewer claude:claude-opus-5-5:high --reviewer codex:gpt-6.1-sol:high';
   assert.deepEqual(await reviews(), [1, 8].map(n =>
-    `-p --effort xhigh --permission-mode auto /review-team --comment --watch ${team} ${url(n)}`));
+    `-p --model claude-opus-5-5 --effort xhigh --permission-mode auto /review-team --comment --watch ${team} ${url(n)}`));
 });
 
 test('--with-considerならレビューに--with-considerを付ける。--act-on-onlyは受け付けない', async () => {
@@ -85,7 +85,7 @@ test('--with-considerならレビューに--with-considerを付ける。--act-on
   await scan();
   await setPrs([{ n: 2 }]);
   await scan('--with-consider');
-  const lead = '-p --effort xhigh --permission-mode auto /review-team --comment --watch';
+  const lead = '-p --model claude-opus-5-5 --effort xhigh --permission-mode auto /review-team --comment --watch';
   assert.deepEqual(await reviews(), [`${lead} ${url(1)}`, `${lead} --with-consider ${url(2)}`]);
   await assert.rejects(scan('--act-on-only'), /act-on-only/);
 });

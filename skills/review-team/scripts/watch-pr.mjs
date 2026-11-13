@@ -380,7 +380,7 @@ async function run(file) {
     const code = await new Promise(done => {
       // The lead runs in its own process group so a hung run can be stopped with its reviewers,
       // which releases the lock and counts the attempt as a failure.
-      const child = spawn(lead, ['-p', '--effort', state.effort, '--permission-mode', 'auto', prompt],
+      const child = spawn(lead, ['-p', '--model', 'claude-opus-5-5', '--effort', state.effort, '--permission-mode', 'auto', prompt],
         { cwd: stateRoot(), stdio: ['ignore', log.fd, log.fd], detached: true,
           env: { ...process.env, REVIEW_TEAM_WATCH_POSTING: posting } });
       const kill = signal => { try { process.kill(-child.pid, signal); } catch {} };
