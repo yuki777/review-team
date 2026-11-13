@@ -70,21 +70,10 @@ async function loadInput() {
   if (!Array.isArray(context) || context.some(file => typeof file?.path !== 'string' || !file.path.trim() || typeof file.content !== 'string')) {
     throw new Error('資料のcontextは{path, content}の配列が必要です。');
   }
-  const [templateFile, rubric, quality] = await Promise.all(
-    ['reviewer-prompt.md', 'rubric.md', 'code-quality-review.md'].map(name => readFile(join(skillDir, 'references', name), 'utf8')),
-  );
-  // reviewer-prompt.md is the upstream file verbatim: the text after its first "---" line is the template itself.
-  const separator = templateFile.indexOf('\n---\n');
-  if (separator < 0) throw new Error('reviewer-prompt.mdにテンプレートの区切り（---）がありません。');
-  const template = templateFile.slice(separator + '\n---\n'.length).trimStart();
+  const template = await readFile(join(skillDir, 'references', 'reviewer-prompt.md'), 'utf8');
   const buildPrompt = snapshot => {
-    const replacements = {
-      INTENT: packet.intent,
-      DIFF_OR_FILES: JSON.stringify({ diff: packet.diff, context }, null, 2),
-      RUBRIC_CONTENTS: rubric,
-      CODE_QUALITY_CONTENTS: quality,
-    };
-    const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES|RUBRIC_CONTENTS|CODE_QUALITY_CONTENTS)\}/g, (_, key) => replacements[key]);
+    const replacements = { INTENT: packet.intent, DIFF_OR_FILES: JSON.stringify({ diff: packet.diff, context }, null, 2) };
+    const prompt = template.replace(/\{(INTENT|DIFF_OR_FILES)\}/g, (_, key) => replacements[key]);
     return snapshot ? `${prompt.trimEnd()}
 
 ## Reference Repository
