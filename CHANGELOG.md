@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.2.2](https://github.com/yuki777/review-team/compare/v4.2.1...v4.2.2) - 2026-11-13
+
+- 既定の主担当を Opus 5.5 xhigh、既定のレビュアーを Fable 5.2 xhigh と GPT 6 Astra xhigh にする by @yuki777 in https://github.com/yuki777/review-team/pull/171
+
 ## [v4.2.1](https://github.com/yuki777/review-team/compare/v4.2.0...v4.2.1) - 2026-11-12
 
 - macOS の bash 3.2 で rt が unbound variable で落ちるのを直す by @yuki777 in https://github.com/yuki777/review-team/pull/168
