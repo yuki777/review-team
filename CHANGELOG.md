@@ -1,8 +1,10 @@
 # Changelog
 
-## [v4.2.2](https://github.com/yuki777/review-team/compare/v4.2.1...v4.2.2) - 2026-11-13
+## [v4.3.0](https://github.com/yuki777/review-team/compare/v4.2.1...v4.3.0) - 2026-11-13
 
 - 既定の主担当を Opus 5.5 xhigh、既定のレビュアーを Fable 5.2 xhigh と GPT 6 Astra xhigh にする by @yuki777 in https://github.com/yuki777/review-team/pull/171
+
+**動作の変更**: 既定のレビュアーが Claude Opus 5.5・GPT 6 Astra から Claude Fable 5.2・GPT 6 Astra（effort はどちらも xhigh）になりました。従来の2人にするには `--team opus:xhigh-astra:xhigh` を付けてください。rt（--loop を含む）とウォッチの再レビューの主担当は、claude の既定モデル（`model` 設定や `ANTHROPIC_MODEL`）ではなく Opus 5.5 で動きます。登録済みのウォッチは、登録時のレビュアーのまま再レビューします。
 
 ## [v4.2.1](https://github.com/yuki777/review-team/compare/v4.2.0...v4.2.1) - 2026-11-12
 
