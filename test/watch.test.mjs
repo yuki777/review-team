@@ -133,7 +133,7 @@ test('新しいheadは次のtickでも変わっていなければ再レビュー
   assert.equal(s.lastReviewedCommit, 'ddd');
   assert.equal(s.rereviews, 1);
   assert.equal(s.failures, 0);
-  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/5 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
+  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --model claude-opus-5-5 --effort xhigh --permission-mode auto \/review-team --comment --rereview 1\/5 https:\/\/example\.test\/acme\/widget\/pull\/7\n$/);
 });
 
 test('再レビューは登録時のレビューと同じレビュアーで起動する', async () => {
@@ -444,7 +444,7 @@ test('deferはレビュー済みのcommitなしで登録し、tickが最初の�
   assert.equal(s.lastReviewedCommit, 'ccc');
   // The first post does not use the re-review allowance, even when it is 0.
   assert.equal(s.rereviews, 0);
-  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --effort high .* --rereview 0\/0 /);
+  assert.match(await readFile(t.leadLog, 'utf8'), /^-p --model claude-opus-5-5 --effort high .* --rereview 0\/0 /);
 });
 
 test('waitはtickかremoveが解除したときに理由を出して終わり、解除のあとに起動しても理由を出す', async () => {

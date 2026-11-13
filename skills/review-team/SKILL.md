@@ -71,7 +71,7 @@ for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$O
 
 レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude（`claude:claude-opus-5-5:xhigh`）・Codex（`codex:gpt-6-astra:xhigh`）の2人。利用者が「Fable も加えて」（`claude:claude-fable-5-2:high`）のように頼んだ場合は、既定の2人にそのレビュアーを足して指定する。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude（`claude:claude-fable-5-2:xhigh`）・Codex（`codex:gpt-6-astra:xhigh`）の2人。利用者が「Sol も加えて」（`codex:gpt-6.1-sol:high`）のように頼んだ場合は、既定の2人にそのレビュアーを足して指定する。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
 
 利用者に伝えるべき注意:
 
@@ -188,7 +188,7 @@ node "$SKILL_DIR/scripts/watch-pr.mjs" wait <出力の pr>
 定期実行（tick）は LLM を使わずに PR を見回り、新しい push があった PR についてだけ、次の形でこのスキルを起動する。
 
 ```sh
-claude -p --effort <登録時の値> --permission-mode auto "/review-team --comment [--with-consider] --rereview <n>/<上限> --reviewer <cli>:<model>:<effort> ... <PR-URL>"
+claude -p --model claude-opus-5-5 --effort <登録時の値> --permission-mode auto "/review-team --comment [--with-consider] --rereview <n>/<上限> --reviewer <cli>:<model>:<effort> ... <PR-URL>"
 ```
 
 `--reviewer` は、登録したときのレビューで使ったレビュアー全員の分が付く（manifest の `reviewers` から `record` が記録する）。利用者が最初に外したレビュアーは、再レビューでも外れたままになる。

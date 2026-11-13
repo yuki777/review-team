@@ -46,7 +46,7 @@ usage() {
     - 投稿後は PR をウォッチし、新しい push が落ち着いたら（5分以上）自動で再レビュー・投稿する
       （PR のマージかクローズ、12時間、再レビュー5回のどれかで終わる。draft の間は見送る。
       見回りは macOS では launchd に自動で登録し、Linux では表示される cron の行を crontab に足す）
-  主担当の claude は effort xhigh、権限確認は auto で動く。
+  主担当の claude は Opus 5.5（claude-opus-5-5）・effort xhigh、権限確認は auto で動く。
   claude を起動する前に GitHub で PR の head を確かめ、次のときは claude を起動せずに見送る（終了ステータス 0）。
     - 同じ PR のレビュー（別の rt・scan・ウォッチの再レビュー）が実行中
     - head がレビュー済み（投稿まで終えた commit と同じ）。--force を付けるとやり直す
@@ -89,7 +89,7 @@ usage() {
 チーム:
   TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
   メンバー名の後ろに :<effort> を付けると、そのレビュアーの reasoning effort を変えられる（省略すると high）。
-  主担当の claude 自身の effort（xhigh）は変わらない。
+  主担当の claude 自身のモデル（Opus 5.5）と effort（xhigh）は変わらない。
 
   名前   CLI:モデル                使える effort
   opus   claude:claude-opus-5-5    low medium high xhigh max
@@ -275,4 +275,4 @@ case "$status" in
   *) exit "$status" ;;
 esac
 export REVIEW_TEAM_PR_LOCK=$$
-exec claude ${PRINT:+-p} --effort xhigh --permission-mode auto "/review-team --comment --watch${WITH_CONSIDER:+ --with-consider}${reviewer_args} $REVIEW_TARGET"
+exec claude ${PRINT:+-p} --model claude-opus-5-5 --effort xhigh --permission-mode auto "/review-team --comment --watch${WITH_CONSIDER:+ --with-consider}${reviewer_args} $REVIEW_TARGET"

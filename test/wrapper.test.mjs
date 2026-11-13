@@ -63,7 +63,7 @@ test('チームを省略すると、状態ディレクトリで既定のレビ�
   const { dir, code, cwd, argv } = await run([prUrl]);
   assert.equal(code, 0);
   assert.equal(cwd, join(dir, 'state', 'review-team'));
-  assert.deepEqual(argv, ['--effort', 'xhigh', '--permission-mode', 'auto', prompt([])]);
+  assert.deepEqual(argv, ['--model', 'claude-opus-5-5', '--effort', 'xhigh', '--permission-mode', 'auto', prompt([])]);
 });
 
 test('チーム名はメンバー名を-でつないだもので、書いた順にレビュアーを並べる', async () => {
@@ -83,10 +83,10 @@ test('チーム名はメンバー名を-でつないだもので、書いた順�
   }
 });
 
-test('opus:xhigh-astra:xhighはconfig/reviewers.jsonの既定と同じ2人になる', async () => {
+test('fable:xhigh-astra:xhighはconfig/reviewers.jsonの既定と同じ2人になる', async () => {
   const defaults = JSON.parse(await readFile(reviewersJson, 'utf8')).reviewers
     .map(({ cli, model, effort }) => `${cli}:${model}:${effort}`);
-  const { argv } = await run(['--team', 'opus:xhigh-astra:xhigh', prUrl]);
+  const { argv } = await run(['--team', 'fable:xhigh-astra:xhigh', prUrl]);
   assert.equal(argv.at(-1), prompt(defaults));
 });
 
@@ -105,7 +105,7 @@ test('--printはclaude -pで起動し、ほかの引数は変えない', async (
     const { code, argv } = await run(args);
     assert.equal(code, 0, args.join(' '));
     const reviewers = args.includes('--team') ? ' --reviewer claude:claude-opus-5-5:high' : '';
-    assert.deepEqual(argv, ['-p', '--effort', 'xhigh', '--permission-mode', 'auto',
+    assert.deepEqual(argv, ['-p', '--model', 'claude-opus-5-5', '--effort', 'xhigh', '--permission-mode', 'auto',
       `/review-team --comment --watch${reviewers} ${prUrl}`], args.join(' '));
   }
 });
