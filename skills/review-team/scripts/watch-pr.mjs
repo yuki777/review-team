@@ -366,7 +366,7 @@ const notifyQuery = `query($url: URI!) { resource(url: $url) { ... on PullReques
   state isDraft headRefOid mergeable viewerDidAuthor
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   reviewThreads(first: 100) { totalCount nodes { isResolved } }
-  reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED]) { nodes { viewerDidAuthor commit { oid } } } } } }`;
+  reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED]) { totalCount nodes { viewerDidAuthor commit { oid } } } } } }`;
 
 // The latest reminder mark (1, 2, 4, 8... hours after the first notification) that has passed, or 0 before the first.
 function passedMark(hours) {
@@ -415,6 +415,9 @@ async function notifyOne(file, record, findApp) {
     if (error.stdout && JSON.parse(error.stdout).data?.resource === null) return null;
     throw error;
   });
+  // A review that began after the lock check may have replaced or removed the record while GitHub answered,
+  // and this answer is about the old record.
+  if ((await readState(file).catch(() => null))?.recordedAt !== record.recordedAt) return null;
   // Nothing is left to ask of the viewer: the PR is gone or over, is their own, or has their verdict on these changes.
   const answered = pr?.reviews.nodes.some(review => review.viewerDidAuthor && record.heads.includes(review.commit?.oid));
   if (pr?.state !== 'OPEN' || pr.viewerDidAuthor || answered) {
@@ -423,10 +426,11 @@ async function notifyOne(file, record, findApp) {
   }
   // GitHub is still working out the conflicts, so the next tick asks again.
   if (pr.mergeable === 'UNKNOWN') return null;
-  // More than 100 threads cannot all be seen, so they count as unresolved.
+  // Past 100, some threads and some verdicts cannot be seen, so the PR does not count as ready.
   const ready = pr.headRefOid === record.heads.at(-1) && !pr.isDraft && pr.mergeable === 'MERGEABLE'
     && (pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? 'SUCCESS') === 'SUCCESS'
-    && pr.reviewThreads.totalCount <= 100 && pr.reviewThreads.nodes.every(thread => thread.isResolved);
+    && pr.reviewThreads.totalCount <= 100 && pr.reviewThreads.nodes.every(thread => thread.isResolved)
+    && pr.reviews.totalCount <= 100;
   if (ready) await sendNotification(await findApp(), record.pr, mark);
   // The first notification waits until the conditions hold; a reminder whose conditions do not hold is skipped.
   if (ready || record.notifiedAt) {

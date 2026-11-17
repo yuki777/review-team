@@ -62,7 +62,7 @@ cp "${diff}" "$out/reviewed.diff"
   const setPr = (fields) => writeFile(pr, JSON.stringify({ data: { resource: {
     state: 'OPEN', isDraft: false, headRefOid: 'aaa', mergeable: 'MERGEABLE', viewerDidAuthor: false,
     commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] },
-    reviewThreads: { totalCount: 0, nodes: [] }, reviews: { nodes: [] }, ...fields,
+    reviewThreads: { totalCount: 0, nodes: [] }, reviews: { totalCount: 0, nodes: [] }, ...fields,
   } } }));
   const cli = (...args) => execFileAsync(process.execPath, [watcher, ...args], { env });
   const stateFile = join(dir, 'state', 'review-team', 'watch', 'prs', 'example.test', 'acme', 'widget', '7.json');
@@ -635,8 +635,10 @@ notifyTest('条件が欠けている間は最初の通知を待ち、そろっ�
     { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] } },
     { reviewThreads: { totalCount: 2, nodes: [{ isResolved: true }, { isResolved: false }] } },
     { reviewThreads: { totalCount: 101, nodes: [{ isResolved: true }] } },
+    // Past 100 verdicts the viewer's own may be out of sight.
+    { reviews: { totalCount: 101, nodes: [{ viewerDidAuthor: false, commit: { oid: 'aaa' } }] } },
     // An approval of an older commit does not answer for this head.
-    { headRefOid: 'aaa', mergeable: 'CONFLICTING', reviews: { nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }] } },
+    { headRefOid: 'aaa', mergeable: 'CONFLICTING', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }] } },
   ];
   for (const fields of notReady) {
     await t.setPr(fields);
@@ -648,7 +650,7 @@ notifyTest('条件が欠けている間は最初の通知を待ち、そろっ�
   // A repository with no CI counts as passing, and resolved threads do not hold the notification back.
   await t.setPr({ commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
     reviewThreads: { totalCount: 1, nodes: [{ isResolved: true }] },
-    reviews: { nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }, { viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
+    reviews: { totalCount: 2, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }, { viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
   assert.match(await t.tick(), / notify \(0h\)$/m);
   assert.equal((await t.opens()).length, 1);
 });
@@ -673,7 +675,7 @@ notifyTest('条件が欠けたリマインダーの回は見送り、次の時�
 notifyTest('マージ・そのheadへの自分のレビュー・自分のPRは、通知せずに記録を消す', async () => {
   for (const [fields, reason] of [
     [{ state: 'MERGED' }, 'merged'], [{ state: 'CLOSED' }, 'closed'], [{ viewerDidAuthor: true }, 'own'],
-    [{ reviews: { nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } }, 'answered'],
+    [{ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } }, 'answered'],
   ]) {
     const t = await ready();
     await t.setPr(fields);
@@ -712,7 +714,7 @@ notifyTest('pushでheadが進むと通知を止め、差分が同じpushなら�
   assert.match(await t.tick(), / notify \(2h\)$/m);
 
   // An approval of the reviewed commit answers for the later head with the same diff.
-  await t.setPr({ headRefOid: 'bbb', reviews: { nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  await t.setPr({ headRefOid: 'bbb', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
   await t.age('notifiedAt', 4.5);
   assert.match(await t.tick(), / notify remove \(answered\)$/m);
   assert.equal((await t.opens()).length, 2);
@@ -729,6 +731,31 @@ notifyTest('見えなくなったPRの記録は消し、GitHubに届かない間
   // gh prints GitHub's answer and then fails when the PR cannot be resolved.
   await writeFile(join(t.dir, 'bin', 'gh'), `#!/bin/sh\necho '{"data":{"resource":null},"errors":[{"type":"NOT_FOUND"}]}'\nexit 1\n`);
   assert.match(await t.cli('tick').then(r => r.stdout), / notify remove \(gone\)$/m);
+  await assert.rejects(stat(t.notifyFile));
+  await writeFile(join(t.dir, 'bin', 'gh'), realGh);
+});
+
+notifyTest('GitHubに問い合わせている間に記録が置き換わったら、古い記録への答えで通知も削除もしない', async () => {
+  const t = await ready();
+  const realGh = await readFile(join(t.dir, 'bin', 'gh'), 'utf8');
+  const during = join(t.dir, 'during-query');
+  // gh runs the test's command just before it answers the notify query, as a review finishing meanwhile would.
+  await writeFile(join(t.dir, 'bin', 'gh'), realGh.replace('#!/bin/sh\n',
+    `#!/bin/sh\ncase "$*" in *reviewThreads*) sh "${during}" ;; esac\n`));
+  // The viewer approved aaa, but the record now is about bbb.
+  const replaced = { pr: prUrl, heads: ['bbb'], recordedAt: new Date(Date.now() + 1000).toISOString() };
+  await writeFile(join(t.dir, 'replaced'), JSON.stringify(replaced));
+  await writeFile(during, `cp "${join(t.dir, 'replaced')}" "${t.notifyFile}"\n`);
+  await t.setPr({ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.deepEqual(await t.notifyState(), replaced);
+
+  // rt --force found Act On and removed the record, while GitHub says the PR is ready.
+  await t.register('aaa', [], '0');
+  await writeFile(during, `rm "${t.notifyFile}"\n`);
+  await t.setPr({});
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.deepEqual(await t.opens(), []);
   await assert.rejects(stat(t.notifyFile));
   await writeFile(join(t.dir, 'bin', 'gh'), realGh);
 });
