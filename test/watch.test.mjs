@@ -47,15 +47,22 @@ mkdir "$out"
 head=$(sed -n 's/.*"headRefOid":"\\([^"]*\\)".*/\\1/p' "${pr}")
 printf '{"repository":{"commit":"%s","pr":{"url":"${prUrl}"}}}' "$head" > "$out/manifest.json"
 cp "${diff}" "$out/reviewed.diff"
-"${process.execPath}" "${watcher}" record --output "$out" > /dev/null
+"${process.execPath}" "${watcher}" record --output "$out" --act-on 1 > /dev/null
 `);
-  await chmod(join(bin, 'gh'), 0o755);
+  // brew names a prefix whose app exists only once a test installs it; open logs its arguments, one call per line.
+  const openLog = join(dir, 'open.log');
+  await writeFile(join(bin, 'brew'), `#!/bin/sh\necho "${join(dir, 'brew')}"\n`);
+  await writeFile(join(bin, 'open'), `#!/bin/sh\nprintf '%s|' "$@" >> "${openLog}"\necho >> "${openLog}"\n`);
+  for (const name of ['gh', 'brew', 'open']) await chmod(join(bin, name), 0o755);
   await chmod(lead, 0o755);
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'),
     REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1', REVIEW_TEAM_QUIET: '0', ...extraEnv };
   delete env.REVIEW_TEAM_DEPTH;
+  // One answer serves both the watch query and the notify query, which reads the fields after headRefOid.
   const setPr = (fields) => writeFile(pr, JSON.stringify({ data: { resource: {
-    state: 'OPEN', isDraft: false, headRefOid: 'aaa', ...fields,
+    state: 'OPEN', isDraft: false, headRefOid: 'aaa', mergeable: 'MERGEABLE', viewerDidAuthor: false,
+    commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] },
+    reviewThreads: { totalCount: 0, nodes: [] }, reviews: { totalCount: 0, nodes: [] }, ...fields,
   } } }));
   const cli = (...args) => execFileAsync(process.execPath, [watcher, ...args], { env });
   const stateFile = join(dir, 'state', 'review-team', 'watch', 'prs', 'example.test', 'acme', 'widget', '7.json');
@@ -79,18 +86,27 @@ cp "${diff}" "$out/reviewed.diff"
     }
     return stdout;
   };
-  const register = async (head, extra = []) => {
+  const register = async (head, extra = [], actOn = '1') => {
     const out = await mkdtemp(join(dir, `first-${head}-`));
     await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: head, pr: { url: prUrl } } }));
     await writeFile(join(out, 'reviewed.diff'), await readFile(diff));
-    return JSON.parse((await cli('record', '--output', out, ...extra)).stdout);
+    return JSON.parse((await cli('record', '--output', out, '--act-on', actOn, ...extra)).stdout);
   };
   // A new head is only observed on the first tick; the next tick acts on it.
   const tickAfterQuiet = async () => {
     assert.match(await tick(), / observe \(settling\)$/m);
     return tick();
   };
-  return { tickAfterQuiet, env, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register };
+  const app = join(dir, 'brew', 'terminal-notifier.app');
+  const installApp = () => mkdir(app, { recursive: true });
+  const opens = async () => (await readFile(openLog, 'utf8').catch(() => '')).split('\n').filter(Boolean);
+  const notifyFile = `${stateFile}.notify`;
+  const notifyState = async () => JSON.parse(await readFile(notifyFile, 'utf8'));
+  // Moves a time in the notify record into the past, as if that many hours had gone by.
+  const age = async (field, hours) => writeFile(notifyFile, JSON.stringify({ ...await notifyState(),
+    [field]: new Date(Date.now() - hours * 3600 * 1000).toISOString() }));
+  return { tickAfterQuiet, env, dir, diff, pr, leadLog, setPr, cli, state, stateFile, tick, register,
+    app, installApp, opens, notifyFile, notifyState, age };
 }
 
 test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無いPRを見送る', async () => {
@@ -145,7 +161,7 @@ test('再レビューは登録時のレビューと同じレビュアーで起�
     reviewers: [{ cli: 'claude', requestedModel: 'claude-opus-5-5', requestedEffort: 'high' },
       { cli: 'codex', requestedModel: 'gpt-6-astra', requestedEffort: 'max' }] }));
   await writeFile(join(out, 'reviewed.diff'), 'diff-a');
-  await t.cli('record', '--output', out);
+  await t.cli('record', '--output', out, '--act-on', '1');
   await t.setPr({ headRefOid: 'bbb' });
   await writeFile(t.diff, 'diff-b');
   await t.tickAfterQuiet();
@@ -528,7 +544,7 @@ test('recordは、rtが渡したロックが自分のものなら外し、投稿
   const out = await mkdtemp(join(t.dir, 'out-'));
   await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } } }));
   await writeFile(join(out, 'reviewed.diff'), '');
-  const record = token => execFileAsync(process.execPath, [watcher, 'record', '--output', out],
+  const record = token => execFileAsync(process.execPath, [watcher, 'record', '--output', out, '--act-on', '1'],
     { env: { ...t.env, REVIEW_TEAM_PR_LOCK: token } });
   // rt's own record registers the watch even though rt holds the lock.
   assert.equal(JSON.parse((await record(String(process.pid + 1))).stdout).registered, true);
@@ -543,7 +559,7 @@ test('ウォッチが解除されたあとの再レビューの記録でも、�
   const out = await mkdtemp(join(t.dir, 'out-'));
   await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'bbb', pr: { url: prUrl } } }));
   await writeFile(join(out, 'reviewed.diff'), '');
-  const { stdout } = await execFileAsync(process.execPath, [watcher, 'record', '--output', out],
+  const { stdout } = await execFileAsync(process.execPath, [watcher, 'record', '--output', out, '--act-on', '1'],
     { env: { ...t.env, REVIEW_TEAM_WATCH_POSTING: join(t.dir, 'posting') } });
   assert.equal(JSON.parse(stdout).registered, false);
   await assert.rejects(stat(t.stateFile));
@@ -579,4 +595,201 @@ test('中身の無いロックは、1分たつまで取らず、過ぎたら回�
   await utimes(lock, old, old);
   assert.equal(await acquireLock(lock), true);
   assert.equal(await readFile(lock, 'utf8'), String(process.pid));
+});
+
+// The notifier is looked for in /Applications first, so these tests cannot control it on a machine that has it there.
+const hasSystemNotifier = Boolean(await stat('/Applications/terminal-notifier.app').catch(() => null));
+const notifyTest = (name, fn) => test(name, { skip: hasSystemNotifier }, fn);
+const openArgs = (t, title, message) => `-n|${t.app}|--args|-title|${title}|-subtitle|acme/widget#7|-message|${message}|-sound|default|-open|${prUrl}|-group|${prUrl}|`;
+
+async function ready(setupEnv) {
+  const t = await setup(setupEnv);
+  await t.installApp();
+  await writeFile(t.diff, 'diff-1\n');
+  await t.setPr({ headRefOid: 'aaa' });
+  await t.register('aaa', [], '0');
+  return t;
+}
+
+notifyTest('Act Onが0件の投稿は、条件がそろったtickで1回通知し、1・2・4…時間の時点でリマインドする', async () => {
+  const t = await ready();
+  assert.match(await t.tick(), / notify \(0h\)$/m);
+  assert.deepEqual(await t.opens(), [openArgs(t, 'Review Team (0h)', 'Act On なし、CI 成功。Approve できます')]);
+  assert.equal((await t.notifyState()).lastMark, 0);
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.equal((await t.opens()).length, 1);
+
+  // Five hours on, the marks at 1, 2 and 4 hours have passed: one reminder, named after the latest.
+  await t.age('notifiedAt', 5);
+  assert.match(await t.tick(), / notify \(4h\)$/m);
+  assert.equal((await t.opens())[1], openArgs(t, 'Review Team Reminder (4h)', 'Approve 忘れがあります'));
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.equal((await t.opens()).length, 2);
+});
+
+notifyTest('条件が欠けている間は最初の通知を待ち、そろったら通知する。mergeableが計算中のtickは何も変えない', async () => {
+  const t = await ready();
+  const notReady = [
+    { isDraft: true }, { mergeable: 'CONFLICTING' }, { mergeable: 'UNKNOWN' },
+    { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'PENDING' } } }] } },
+    { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] } },
+    { reviewThreads: { totalCount: 2, nodes: [{ isResolved: true }, { isResolved: false }] } },
+    { reviewThreads: { totalCount: 101, nodes: [{ isResolved: true }] } },
+    // Past 100 verdicts the viewer's own may be out of sight.
+    { reviews: { totalCount: 101, nodes: [{ viewerDidAuthor: false, commit: { oid: 'aaa' } }] } },
+    // An approval of an older commit does not answer for this head.
+    { headRefOid: 'aaa', mergeable: 'CONFLICTING', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }] } },
+  ];
+  for (const fields of notReady) {
+    await t.setPr(fields);
+    assert.doesNotMatch(await t.tick(), / notify /, JSON.stringify(fields));
+  }
+  assert.deepEqual(await t.opens(), []);
+  assert.equal((await t.notifyState()).notifiedAt, undefined);
+
+  // A repository with no CI counts as passing, and resolved threads do not hold the notification back.
+  await t.setPr({ commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
+    reviewThreads: { totalCount: 1, nodes: [{ isResolved: true }] },
+    reviews: { totalCount: 2, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }, { viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
+  assert.match(await t.tick(), / notify \(0h\)$/m);
+  assert.equal((await t.opens()).length, 1);
+});
+
+notifyTest('条件が欠けたリマインダーの回は見送り、次の時刻でまた確かめる。計算中なら次のtickで確かめる', async () => {
+  const t = await ready();
+  await t.tick();
+  await t.age('notifiedAt', 1.5);
+  await t.setPr({ mergeable: 'UNKNOWN' });
+  await t.tick();
+  assert.equal((await t.notifyState()).lastMark, 0);
+  await t.setPr({ isDraft: true });
+  await t.tick();
+  assert.equal((await t.notifyState()).lastMark, 1);
+  await t.setPr({});
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.equal((await t.opens()).length, 1);
+  await t.age('notifiedAt', 2.5);
+  assert.match(await t.tick(), / notify \(2h\)$/m);
+});
+
+notifyTest('マージ・そのheadへの自分のレビュー・自分のPRは、通知せずに記録を消す', async () => {
+  for (const [fields, reason] of [
+    [{ state: 'MERGED' }, 'merged'], [{ state: 'CLOSED' }, 'closed'], [{ viewerDidAuthor: true }, 'own'],
+    [{ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } }, 'answered'],
+  ]) {
+    const t = await ready();
+    await t.setPr(fields);
+    assert.match(await t.tick(), new RegExp(` notify remove \\(${reason}\\)$`, 'm'));
+    await assert.rejects(stat(t.notifyFile));
+    assert.deepEqual(await t.opens(), []);
+  }
+});
+
+test('Act Onがある投稿は通知の記録を消し、--act-onの無いrecordは何も書かずに失敗する', async () => {
+  const t = await ready();
+  await stat(t.notifyFile);
+  await t.register('aaa', [], '2');
+  await assert.rejects(stat(t.notifyFile));
+
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'bbb', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  await assert.rejects(t.cli('record', '--output', out), /--act-on/);
+  assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'aaa');
+});
+
+notifyTest('pushでheadが進むと通知を止め、差分が同じpushなら新しいheadでリマインドを続ける', async () => {
+  const t = await ready();
+  await t.tick();
+  await t.setPr({ headRefOid: 'bbb' });
+  await t.age('notifiedAt', 1.5);
+  // The reminder at 1 hour finds another head: nothing is sent while the watch waits for the pushes to settle.
+  assert.match(await t.tick(), / observe \(settling\)$/m);
+  const out = await t.tick();
+  assert.match(out, / same-diff$/m);
+  assert.doesNotMatch(out, / notify /);
+  assert.deepEqual((await t.notifyState()).heads, ['aaa', 'bbb']);
+  assert.equal((await t.opens()).length, 1);
+  await t.age('notifiedAt', 2.5);
+  assert.match(await t.tick(), / notify \(2h\)$/m);
+
+  // An approval of the reviewed commit answers for the later head with the same diff.
+  await t.setPr({ headRefOid: 'bbb', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  await t.age('notifiedAt', 4.5);
+  assert.match(await t.tick(), / notify remove \(answered\)$/m);
+  assert.equal((await t.opens()).length, 2);
+});
+
+notifyTest('見えなくなったPRの記録は消し、GitHubに届かない間は記録を変えずに次のtickで確かめる', async () => {
+  const t = await ready();
+  await t.tick();
+  await t.age('notifiedAt', 1.5);
+  const realGh = await readFile(join(t.dir, 'bin', 'gh'), 'utf8');
+  await writeFile(join(t.dir, 'bin', 'gh'), '#!/bin/sh\nexit 1\n');
+  await t.cli('tick');
+  assert.equal((await t.notifyState()).lastMark, 0);
+  // gh prints GitHub's answer and then fails when the PR cannot be resolved.
+  await writeFile(join(t.dir, 'bin', 'gh'), `#!/bin/sh\necho '{"data":{"resource":null},"errors":[{"type":"NOT_FOUND"}]}'\nexit 1\n`);
+  assert.match(await t.cli('tick').then(r => r.stdout), / notify remove \(gone\)$/m);
+  await assert.rejects(stat(t.notifyFile));
+  await writeFile(join(t.dir, 'bin', 'gh'), realGh);
+});
+
+notifyTest('GitHubに問い合わせている間に記録が置き換わったら、古い記録への答えで通知も削除もしない', async () => {
+  const t = await ready();
+  const realGh = await readFile(join(t.dir, 'bin', 'gh'), 'utf8');
+  const during = join(t.dir, 'during-query');
+  // gh runs the test's command just before it answers the notify query, as a review finishing meanwhile would.
+  await writeFile(join(t.dir, 'bin', 'gh'), realGh.replace('#!/bin/sh\n',
+    `#!/bin/sh\ncase "$*" in *reviewThreads*) sh "${during}" ;; esac\n`));
+  // The viewer approved aaa, but the record now is about bbb.
+  const replaced = { pr: prUrl, heads: ['bbb'], recordedAt: new Date(Date.now() + 1000).toISOString() };
+  await writeFile(join(t.dir, 'replaced'), JSON.stringify(replaced));
+  await writeFile(during, `cp "${join(t.dir, 'replaced')}" "${t.notifyFile}"\n`);
+  await t.setPr({ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.deepEqual(await t.notifyState(), replaced);
+
+  // rt --force found Act On and removed the record, while GitHub says the PR is ready.
+  await t.register('aaa', [], '0');
+  await writeFile(during, `rm "${t.notifyFile}"\n`);
+  await t.setPr({});
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.deepEqual(await t.opens(), []);
+  await assert.rejects(stat(t.notifyFile));
+  await writeFile(join(t.dir, 'bin', 'gh'), realGh);
+});
+
+notifyTest('再レビュー中に解除したウォッチは、その再レビューの記録で通知の対象に戻らない', async () => {
+  const t = await ready();
+  await t.cli('remove', prUrl);
+  const out = await mkdtemp(join(t.dir, 'out-'));
+  await writeFile(join(out, 'manifest.json'), JSON.stringify({ repository: { commit: 'aaa', pr: { url: prUrl } } }));
+  await writeFile(join(out, 'reviewed.diff'), '');
+  await execFileAsync(process.execPath, [watcher, 'record', '--output', out, '--act-on', '0'],
+    { env: { ...t.env, REVIEW_TEAM_WATCH_POSTING: join(t.dir, 'posting') } });
+  await assert.rejects(stat(t.notifyFile));
+});
+
+notifyTest('レビュー中のPRは通知を待ち、removeは通知の記録も消す', async () => {
+  const t = await ready();
+  await writeFile(`${t.stateFile}.lock`, String(process.pid));
+  assert.doesNotMatch(await t.cli('tick').then(r => r.stdout), / notify /);
+  await rm(`${t.stateFile}.lock`);
+  await t.cli('remove', prUrl);
+  await assert.rejects(stat(t.notifyFile));
+  await t.tick();
+  assert.deepEqual(await t.opens(), []);
+});
+
+notifyTest('terminal-notifierが無ければ通知せずに記録を残し、条件がそろわないまま7日たった記録は消す', async () => {
+  const t = await ready();
+  await rm(t.app, { recursive: true });
+  assert.doesNotMatch(await t.tick(), / notify /);
+  assert.deepEqual(await t.opens(), []);
+  await stat(t.notifyFile);
+
+  await t.age('recordedAt', 7 * 24 + 1);
+  assert.match(await t.tick(), / notify remove \(expired\)$/m);
+  await assert.rejects(stat(t.notifyFile));
 });

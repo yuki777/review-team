@@ -43,7 +43,7 @@ if [ -f "${join(dir, 'claude-posts')}" ]; then
   head=$(gh api graphql -f "url=$url" | sed -n 's/.*"headRefOid":"\\([^"]*\\)".*/\\1/p')
   printf '{"repository":{"commit":"%s","pr":{"url":"%s"}}}' "$head" "$url" > "$out/manifest.json"
   : > "$out/reviewed.diff"
-  "${process.execPath}" "${watcher}" record --output "$out" > /dev/null
+  "${process.execPath}" "${watcher}" record --output "$out" --act-on 1 > /dev/null
 fi
 # A push or a red CI while this review runs changes what the next search returns.
 [ -f "${join(dir, 'next-search.json')}" ] && mv "${join(dir, 'next-search.json')}" "${search}"

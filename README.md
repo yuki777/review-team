@@ -109,6 +109,24 @@ rt --loop --org <組織> --team fable:max-astra:xhigh
 
 `--team`・`--with-consider` は、見つけた PR のレビューにそのまま渡されます。`--org`・`--repo`・`--interval` は `--loop` と一緒のときだけ使えます。
 
+### Approve できる PR の通知（macOS）
+
+review-team のレビューは常にコメントとして投稿され、Approve は人が GitHub で行います。投稿したレビューの Act On が0件で、PR が Approve できる状態になったら、1分ごとの見回りが [terminal-notifier](https://github.com/julienXX/terminal-notifier) で OS の通知を出します。通知をクリックすると PR が開きます。`rt`（`--loop` を含む）と `--watch` で投稿した PR が対象です。
+
+- **通知する条件**（すべて満たしたとき）: PR が open で draft でない。head がレビューした commit のまま（ウォッチ中に差分が同じ push があったときは、その head も同じとみなす）。CI が通っている（CI が無ければ通っているとみなす。実行中なら通るまで待つ）。コンフリクトが無い。未解決のレビュースレッドが無い（誰のスレッドでも。`--with-consider` で投稿した Consider のスレッドも含む）。その head に自分の Approve も Request changes も無い。自分が作成した PR は通知しない。
+- **リマインダー**: 最初の通知（`Review Team (0h)`）から 1・2・4・8…時間の時点で、条件を確かめ直して `Review Team Reminder (1h)` のように通知する。条件が欠けていた回は見送り、次の時刻でまた確かめる。Mac がスリープしていて時刻を過ぎたときは、起きたあとに1回だけ通知する。
+- **終わる条件**: PR のマージかクローズ。その head への自分の Approve か Request changes。条件がそろわないまま7日たったとき。新しい push があると止まり、新しい head のレビューが Act On 0件で投稿されたら最初から通知する。手で止めるには `node ~/.agents/skills/review-team/scripts/watch-pr.mjs remove <PR-URL>`。
+- **オン・オフ**: terminal-notifier.app が `/Applications/terminal-notifier.app` か `$(brew --prefix terminal-notifier)/terminal-notifier.app` にあれば通知し、どちらにも無ければ通知しない（エラーにもならない）。オプションや環境変数はない。
+
+準備は次の2つです。Homebrew で入れた terminal-notifier は、コマンド名で直接実行すると通知の許可を取れずに失敗することがあるので（[terminal-notifier #328](https://github.com/julienXX/terminal-notifier/issues/328)）、最初に一度、アプリとして起動して通知を許可します。review-team も同じ `open -n` の形で起動します。
+
+```sh
+brew install terminal-notifier
+open -n "$(brew --prefix terminal-notifier)/terminal-notifier.app" --args -title 'Review Team' -message '通知のテスト'
+```
+
+2行目で macOS が通知の許可を尋ねたら許可します。通知が出れば準備は終わりです。
+
 ## リリース
 
 [tagpr](https://github.com/Songmu/tagpr) が、main へのマージのたびにリリース用の PR を作り直します。その PR をマージすると、`skills/review-team/VERSION` の版でタグと GitHub Release が作られます。版は既定で patch が上がり、PR に `tagpr:minor` か `tagpr:major` のラベルを付けると上げ幅が変わります。VERSION を手で書き換える必要はありません。tagpr が PR を作れるよう、リポジトリの Settings > Actions > General > Workflow permissions で「Allow GitHub Actions to create and approve pull requests」を有効にしておきます。

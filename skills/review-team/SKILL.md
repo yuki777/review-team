@@ -163,8 +163,10 @@ PR に投稿するのは、既定では Act On だけで、Consider は Noted �
 `--watch` か `--rereview` があり、github-post.md の5節まで終えて投稿を確かめられたら、次を実行する。投稿しなかった、または止まった場合は実行しない。ただし `--watch` と `--comment` の両方があり、github-post.md の7節の自動再レビューを終えても head が動き続けて投稿しなかったときは、`record` の代わりに同じ引数で `defer` を実行し、最初の投稿を定期実行に任せる。定期実行はプレビューの承認を待たずに投稿するので、`--comment` の同意が無ければ `defer` しない。
 
 ```sh
-node "$SKILL_DIR/scripts/watch-pr.mjs" record --output "$OUTPUT" --effort <ホストが示す自分の effort>
+node "$SKILL_DIR/scripts/watch-pr.mjs" record --output "$OUTPUT" --act-on <Act On の件数> --effort <ホストが示す自分の effort>
 ```
+
+`--act-on` には、4節の判定でこの head の Act On にした指摘の件数を渡す。インラインに投稿したものも、総評に書いたものも、github-post.md の7節で引き継いだものも数え、Consider 以下は数えない。0件なら `0` を渡す。省くと `record` はエラーで終わる。`record` は、0件のレビューを投稿した PR を通知の対象として残し、定期実行（tick）が、その PR が Approve できる状態になったときに OS の通知で利用者に知らせる（条件は `watch-pr.mjs --help`）。通知は tick が出すので、リードは通知のためのコマンドを実行しない。
 
 ホストが effort を示していなければ `--effort` を省く（既定 `xhigh`）。`--with-consider` で起動されていれば、`record` と `defer` に `--with-consider` を足す。登録したときの値が以後の再レビューに引き継がれ、登録済みの PR では変わらない。出力の `withConsider` が起動時の指定と違えば、そのことと、`watch-pr.mjs remove <PR-URL>` で外してから登録し直せば変えられることを利用者に伝える。`defer` の出力の `registered` が `true` なら、`record` と同じことに加えて、head が落ち着いたら定期実行が再レビューして最初の投稿をすることを伝える。`record` は PR が未登録なら登録し、登録済みならレビューした commit と差分を記録する。出力の `registered` が `true` なら、利用者に、ウォッチの期限（`expiresAt`）、再レビューの上限（`maxRereviews`）、`watch-pr.mjs list` と `watch-pr.mjs remove <PR-URL>` で確認と解除ができることを伝える。`schedule.installed` が `true` なら、1分ごとの定期実行を登録したことと、`schedule.plist` のパス、`watch-pr.mjs uninstall` で外せることも伝える。`schedule.cron` があれば（macOS 以外）、その行を crontab に足すよう伝える。
 
@@ -201,7 +203,7 @@ claude -p --model claude-opus-5-5 --effort <登録時の値> --permission-mode a
 - head が進んでいたら、github-post.md の7節の自動再レビューはせず、投稿せずに終える。`watch-pr.mjs` が head の前進を見て、失敗にも再レビューの回数にも数えずに次の tick へ回す。`watch-pr.mjs` はリードの実行中も1分ごとに head を確かめ、進んでいればリードを止める。止められたくない投稿の途中は、github-post.md の4節の印で守る。
 - CI などの外の状態がそろうのを待つのは5分までにし、そろわなければ投稿せずに終える。runner が終了コード 2 で終わったときも、2節とは違って起動し直さず、投稿せずに終える。どちらも `record` を実行しなかった回として失敗に数えられる（head が進んでいた回は除く）。
 - 総評の対象コミットの下に `- 自動再レビュー: <n>/<上限> 回目` を足す。n が上限と同じなら、続けて「以後の push は自動ではレビューしません」と書く。n が 0 なら、`defer` で任された最初の投稿なので、この行を足さない。
-- 投稿を確かめられたら、上の `record` を `--effort` なしで実行する。`record` を実行しなかった回は、tick が失敗として数え、2回続くとウォッチを止める。
+- 投稿を確かめられたら、上の `record` を `--effort` なしで実行する（`--act-on` は付ける）。`record` を実行しなかった回は、tick が失敗として数え、2回続くとウォッチを止める。
 
 利用者に質問できない非対話の起動（`claude -p`。`rt --print` や `scan-prs.mjs` から）で、利用者に選んでもらう場面になったら、`--rereview` と同じく書き込みをせずに止め、理由を出力して終える。
 

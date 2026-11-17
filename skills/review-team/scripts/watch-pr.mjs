@@ -20,15 +20,16 @@ const maxFailures = 2;
 const label = 'io.github.yuki777.review-team.watch';
 const help = `review-team watch: 投稿したPRに新しいpushがあれば、定期的に再レビューして投稿します。
 
-node watch-pr.mjs record --output <runnerの出力先> [--effort <effort>] [--with-consider] [--max-rereviews 5] [--ttl-hours 12]
+node watch-pr.mjs record --output <runnerの出力先> --act-on <件数> [--effort <effort>] [--with-consider] [--max-rereviews 5] [--ttl-hours 12]
     投稿に成功したレビューを記録する。未登録のPRなら登録し、tick の定期実行が未登録なら登録する
+    --act-on はそのレビューの Act On の件数。0 なら、Approve できる状態になったときの通知の対象にする
     --with-consider は登録するときだけ記録し、再レビューでも Consider を投稿する
 node watch-pr.mjs defer --output <runnerの出力先> [--effort <effort>] [--with-consider] [--max-rereviews 5] [--ttl-hours 12]
     レビュー中にheadが進み続けて投稿できなかったPRを、レビュー済みのcommitなしで登録し、最初の投稿をtickに任せる
 node watch-pr.mjs tick       ウォッチ中のPRを確かめ、必要なものだけ再レビューを起動する（定期実行の本体）
 node watch-pr.mjs list       ウォッチ中と、失敗で停止したPRを表示する
 node watch-pr.mjs remove <PR-URL>
-                             ウォッチをやめる
+                             ウォッチと通知をやめる
 node watch-pr.mjs wait <PR-URL>
                              ウォッチが解除されるか失敗で停止するまで待ち、理由を1行のJSONで出す（状態ファイルだけを見る）
 node watch-pr.mjs install    launchd に1分ごとの tick を登録する（macOS）。Linux では crontab の行を表示する
@@ -37,6 +38,12 @@ node watch-pr.mjs uninstall  launchd の登録を外す
 解除する条件: PRがマージ・クローズされた、登録から ttl を過ぎた、再レビューが上限に達した（上限の回を投稿した次の tick で解除する）。状態ファイルを消すので list に出なくなる。理由は tick.log に remove (merged) のように残る
 停止する条件: 失敗が${maxFailures}回続いた。list に停止(failed)として残る。remove で消すか、--watch で登録し直す
 見送る条件: headがレビュー済み、差分がレビュー済みと同じ、draft、新しいheadを見つけてから静穏時間（5分）が過ぎるまで（push が続いていないかを見る）、同じPRのレビュー（rt か再レビュー）が実行中
+通知: Act On が0件のレビューを投稿したPRが Approve できる状態になったら、tick が terminal-notifier で通知する
+      条件: open で draft でない、headがレビューしたcommitのまま（差分が同じpushは同じとみなす）、CI が通っている（無ければ通っているとみなす）、
+            コンフリクトが無い、未解決のレビュースレッドが無い、そのheadに自分の Approve も Request changes も無い。自分が作成したPRは通知しない
+      以後、最初の通知から 1・2・4・8…時間の時点で、条件を確かめ直してリマインドする（条件が欠けた回は見送る）
+      マージかクローズ、そのheadへの自分の Approve か Request changes、remove で終わる。条件がそろわないまま7日たっても終わる
+      terminal-notifier.app は /Applications と $(brew --prefix terminal-notifier) の2か所だけを探し、無ければ通知しない
 追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
 `;
 
@@ -74,12 +81,12 @@ async function updateState(file, patch) {
   if (current) await writeState(file, { ...current, ...patch });
 }
 
-async function listStateFiles(dir = join(watchDir(), 'prs')) {
+async function listStateFiles(suffix = '.json', dir = join(watchDir(), 'prs')) {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   const files = await Promise.all(entries.map(entry => {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) return listStateFiles(path);
-    return entry.name.endsWith('.json') ? [path] : [];
+    if (entry.isDirectory()) return listStateFiles(suffix, path);
+    return entry.name.endsWith(suffix) ? [path] : [];
   }));
   return files.flat().sort();
 }
@@ -161,6 +168,11 @@ export const prLockPath = url => `${statePath(url)}.lock`;
 export const reviewedPath = url => `${statePath(url)}.reviewed`;
 export const readReviewed = url => readState(reviewedPath(url)).catch(() => ({}));
 
+// A post with no Act On leaves this record: the PR is ready for the viewer's approval once its other conditions hold.
+// It is a file of its own because reminders go on for days after the watch has ended. heads holds the reviewed
+// commit and the later heads with the same diff; the last one is the head the notifications are about.
+const notifyPath = url => `${statePath(url)}.notify`;
+
 // Why tick or remove ended a watch, kept beside the state file for wait. Registering the PR again clears it.
 const removedPath = file => `${file}.removed`;
 
@@ -219,6 +231,8 @@ async function load(values) {
 }
 
 async function record(values) {
+  // Required, so a lead that forgets it gets an error instead of a PR that is silently never notified.
+  if (!/^\d+$/.test(values['act-on'] ?? '')) throw new Error('--act-onに、このレビューの Act On の件数を指定してください。');
   const url = await markReviewed(values, true);
   try {
     await recordWatch(values);
@@ -236,6 +250,12 @@ async function recordWatch(values) {
     lastPostedAt: now.toISOString(), failures: 0, supersededRuns: 0 });
   await writeState(file, state);
   if (!previous) await rm(removedPath(file), { force: true });
+  // rt --force can find Act On in a head that had none, so the notify record is removed as well as written.
+  if (Number(values['act-on']) === 0) {
+    await writeState(notifyPath(state.pr), { pr: state.pr, heads: [manifest.repository.commit], recordedAt: now.toISOString() });
+  } else {
+    await rm(notifyPath(state.pr), { force: true });
+  }
   const schedule = await ensureInstalled();
   console.log(JSON.stringify({ registered: !previous, state: file, schedule, ...state }, null, 2));
 }
@@ -324,13 +344,114 @@ async function tick() {
       } else if (decision.action === 'same-diff') {
         // The pushes settled without needing a review, so the next push waits only the base quiet time.
         await updateState(file, { lastReviewedCommit: decision.head, supersededRuns: 0 });
+        // The same changes keep their verdict, so the notifications go on for this head.
+        const notify = await readState(notifyPath(state.pr)).catch(() => null);
+        if (notify) await writeState(notifyPath(state.pr), { ...notify, heads: [...notify.heads, decision.head] });
       } else if (decision.action === 'review') {
         const child = spawn(process.execPath, [script, 'run', file], { detached: true, stdio: 'ignore' });
         child.unref();
       }
     }
+    await notifyReady();
   } finally {
     await releaseLock(tickLock);
+  }
+}
+
+const hourMs = 3600 * 1000;
+// A PR whose conditions never hold is asked about every minute, so that ends after a week.
+const notifyWaitMs = 7 * 24 * hourMs;
+
+const notifyQuery = `query($url: URI!) { resource(url: $url) { ... on PullRequest {
+  state isDraft headRefOid mergeable viewerDidAuthor
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  reviewThreads(first: 100) { totalCount nodes { isResolved } }
+  reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED]) { totalCount nodes { viewerDidAuthor commit { oid } } } } } }`;
+
+// The latest reminder mark (1, 2, 4, 8... hours after the first notification) that has passed, or 0 before the first.
+function passedMark(hours) {
+  let mark = 0;
+  for (let next = 1; next <= hours; next *= 2) mark = next;
+  return mark;
+}
+
+// Only these two places are looked at. Without the app nothing is notified, which is how notifications are left off.
+async function notifierApp() {
+  const brewed = () => execFileAsync('brew', ['--prefix', 'terminal-notifier'], { timeout: 30000 })
+    .then(({ stdout }) => join(stdout.trim(), 'terminal-notifier.app'), () => null);
+  for (const find of [() => '/Applications/terminal-notifier.app', brewed]) {
+    const app = await find();
+    if (app && await stat(app).catch(() => null)) return app;
+  }
+  return null;
+}
+
+// The app is started through open: the Homebrew build is refused permission to notify when its binary is run directly.
+// A click opens the PR, and a later notification of the same PR replaces this one.
+async function sendNotification(app, url, mark) {
+  const { owner, repo, number } = parsePrUrl(url);
+  const [title, message] = mark ? [`Review Team Reminder (${mark}h)`, 'Approve 忘れがあります']
+    : ['Review Team (0h)', 'Act On なし、CI 成功。Approve できます'];
+  await execFileAsync('open', ['-n', app, '--args', '-title', title, '-subtitle', `${owner}/${repo}#${number}`,
+    '-message', message, '-sound', 'default', '-open', url, '-group', url], { timeout: 30000 });
+}
+
+// Handles one notify record, and returns what it did for the tick log. findApp looks for the app once per tick.
+async function notifyOne(file, record, findApp) {
+  const now = Date.now();
+  const mark = record.notifiedAt ? passedMark((now - Date.parse(record.notifiedAt)) / hourMs) : 0;
+  // Between reminders GitHub is not asked at all.
+  if (record.notifiedAt && mark === record.lastMark) return null;
+  if (!record.notifiedAt && now - Date.parse(record.recordedAt) > notifyWaitMs) {
+    await rm(file, { force: true });
+    return 'notify remove (expired)';
+  }
+  // A review in progress (rt --force, say) may change the verdict, and its record decides.
+  if (await locked(prLockPath(record.pr)) || !await findApp()) return null;
+  const args = ['api', 'graphql', '--hostname', parsePrUrl(record.pr).host, '-f', `query=${notifyQuery}`, '-f', `url=${record.pr}`];
+  // For a PR that cannot be seen any more (deleted, or access lost), gh fails but still prints GitHub's answer.
+  // Without this, a notified record of such a PR would ask GitHub every minute for ever.
+  const pr = await gh(args).then(out => JSON.parse(out).data?.resource, error => {
+    if (error.stdout && JSON.parse(error.stdout).data?.resource === null) return null;
+    throw error;
+  });
+  // A review that began after the lock check may have replaced or removed the record while GitHub answered,
+  // and this answer is about the old record.
+  if ((await readState(file).catch(() => null))?.recordedAt !== record.recordedAt) return null;
+  // Nothing is left to ask of the viewer: the PR is gone or over, is their own, or has their verdict on these changes.
+  const answered = pr?.reviews.nodes.some(review => review.viewerDidAuthor && record.heads.includes(review.commit?.oid));
+  if (pr?.state !== 'OPEN' || pr.viewerDidAuthor || answered) {
+    await rm(file, { force: true });
+    return `notify remove (${!pr ? 'gone' : pr.state !== 'OPEN' ? pr.state.toLowerCase() : answered ? 'answered' : 'own'})`;
+  }
+  // GitHub is still working out the conflicts, so the next tick asks again.
+  if (pr.mergeable === 'UNKNOWN') return null;
+  // Past 100, some threads and some verdicts cannot be seen, so the PR does not count as ready.
+  const ready = pr.headRefOid === record.heads.at(-1) && !pr.isDraft && pr.mergeable === 'MERGEABLE'
+    && (pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? 'SUCCESS') === 'SUCCESS'
+    && pr.reviewThreads.totalCount <= 100 && pr.reviewThreads.nodes.every(thread => thread.isResolved)
+    && pr.reviews.totalCount <= 100;
+  if (ready) await sendNotification(await findApp(), record.pr, mark);
+  // The first notification waits until the conditions hold; a reminder whose conditions do not hold is skipped.
+  if (ready || record.notifiedAt) {
+    await updateState(file, { notifiedAt: record.notifiedAt ?? new Date(now).toISOString(), lastMark: mark });
+  }
+  return ready ? `notify (${mark}h)` : null;
+}
+
+// Notifies the viewer of the PRs that are ready for their approval, and reminds them later.
+async function notifyReady() {
+  let app;
+  const findApp = () => app ??= notifierApp();
+  for (const file of await listStateFiles('.notify')) {
+    const record = await readState(file).catch(() => null);
+    if (!record) continue;
+    try {
+      const done = await notifyOne(file, record, findApp);
+      if (done) console.log(`${record.pr} ${done}`);
+    } catch (error) {
+      console.error(`${record.pr} ${error.message}`);
+    }
   }
 }
 
@@ -462,6 +583,7 @@ async function remove(url) {
   // A state file that cannot be read is still removed, so it cannot be left behind out of list's sight.
   if (state) await deleteWatch(file, state, 'removed');
   else await rm(file, { force: true });
+  await rm(notifyPath(url), { force: true });
   console.log(`ウォッチをやめました: ${url}`);
 }
 
@@ -552,7 +674,7 @@ async function uninstall() {
 
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    output: { type: 'string' }, effort: { type: 'string' }, 'with-consider': { type: 'boolean' },
+    output: { type: 'string' }, effort: { type: 'string' }, 'with-consider': { type: 'boolean' }, 'act-on': { type: 'string' },
     'max-rereviews': { type: 'string' }, 'ttl-hours': { type: 'string' }, help: { type: 'boolean' },
   } });
   const [command, arg] = positionals;
