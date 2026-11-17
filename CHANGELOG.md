@@ -1,5 +1,11 @@
 # Changelog
 
+## [v4.4.0](https://github.com/yuki777/review-team/compare/v4.3.0...v4.4.0) - 2026-11-17
+
+- Approve できる状態になった PR を OS 通知で知らせ、リマインドする by @yuki777 in https://github.com/yuki777/review-team/pull/174
+
+**動作の変更**: `watch-pr.mjs record` に `--act-on <Act On の件数>` が必須になりました（SKILL.md の手順は対応済みです）。macOS に terminal-notifier.app があると、Act On が0件のレビューを投稿した PR が Approve できる状態になったときに OS の通知を出し、1・2・4・8…時間後にリマインドします。使うには `brew install terminal-notifier` のあと、README の手順で一度だけ通知を許可してください。terminal-notifier.app が無ければ通知は出ません。
+
 ## [v4.3.0](https://github.com/yuki777/review-team/compare/v4.2.1...v4.3.0) - 2026-11-13
 
 - 既定の主担当を Opus 5.5 xhigh、既定のレビュアーを Fable 5.2 xhigh と GPT 6 Astra xhigh にする by @yuki777 in https://github.com/yuki777/review-team/pull/171
