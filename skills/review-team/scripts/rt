@@ -46,6 +46,10 @@ usage() {
     - 投稿後は PR をウォッチし、新しい push が落ち着いたら（5分以上）自動で再レビュー・投稿する
       （PR のマージかクローズ、12時間、再レビュー5回のどれかで終わる。draft の間は見送る。
       見回りは macOS では launchd に自動で登録し、Linux では表示される cron の行を crontab に足す）
+  投稿したレビューの Act On が0件で、PR が Approve できる状態（open で draft でなく、CI が通り、コンフリクトも
+  未解決のレビュースレッドも無い）になったら、見回りが terminal-notifier で OS の通知を出し、最初の通知から
+  1・2・4・8…時間の時点でリマインドする（自分が Approve か Request changes を出すか、PR のマージかクローズで終わる）。
+  terminal-notifier.app が /Applications と brew --prefix terminal-notifier のどちらにも無ければ通知しない。
   主担当の claude は Opus 5.5（claude-opus-5-5）・effort xhigh、権限確認は auto で動く。
   claude を起動する前に GitHub で PR の head を確かめ、次のときは claude を起動せずに見送る（終了ステータス 0）。
     - 同じ PR のレビュー（別の rt・scan・ウォッチの再レビュー）が実行中
