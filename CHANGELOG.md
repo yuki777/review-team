@@ -1,5 +1,11 @@
 # Changelog
 
+## [v4.5.0](https://github.com/yuki777/review-team/compare/v4.4.0...v4.5.0) - 2026-11-18
+
+- Codex のレビュアーを GPT 6.2 Astra・GPT 6.2 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/177
+
+**動作の変更**: 既定のレビュアーが Claude Fable 5.2・GPT 6 Astra から Claude Fable 5.2・GPT 6.2 Astra（effort はどちらも xhigh のまま）になりました。`--team` の `astra` は GPT 6.2 Astra（`gpt-6.2-astra`）、`sol` は GPT 6.2 Sol（`gpt-6.2-sol`）を指します。どちらも Codex CLI 0.166.0 以降が必要です。古いと Codex のレビュアーが `model_unavailable` で失敗し、Claude だけのレビューになるので、先に Codex CLI を更新してください。`rt --team` からは `gpt-6-astra`・`gpt-6.1-sol` を選べなくなりました（`/review-team` を直接呼ぶときは `--reviewer codex:gpt-6-astra:xhigh` のように指定できます）。登録済みのウォッチは、登録時のレビュアーのまま再レビューします。
+
 ## [v4.4.0](https://github.com/yuki777/review-team/compare/v4.3.0...v4.4.0) - 2026-11-17
 
 - Approve できる状態になった PR を OS 通知で知らせ、リマインドする by @yuki777 in https://github.com/yuki777/review-team/pull/174
