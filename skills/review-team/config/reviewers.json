@@ -1,6 +1,6 @@
 {
   "reviewers": [
     { "cli": "claude", "model": "claude-fable-5-2", "effort": "xhigh" },
-    { "cli": "codex", "model": "gpt-6-astra", "effort": "xhigh" }
+    { "cli": "codex", "model": "gpt-6.2-astra", "effort": "xhigh" }
   ]
 }

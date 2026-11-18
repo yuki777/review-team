@@ -68,11 +68,11 @@ test('チームを省略すると、状態ディレクトリで既定のレビ�
 
 test('チーム名はメンバー名を-でつないだもので、書いた順にレビュアーを並べる', async () => {
   const cases = {
-    'opus-sol': ['claude:claude-opus-5-5:high', 'codex:gpt-6.1-sol:high'],
-    'sol-opus': ['codex:gpt-6.1-sol:high', 'claude:claude-opus-5-5:high'],
-    'opus-fable-sol': ['claude:claude-opus-5-5:high', 'claude:claude-fable-5-2:high', 'codex:gpt-6.1-sol:high'],
-    'fable-astra': ['claude:claude-fable-5-2:high', 'codex:gpt-6-astra:high'],
-    'opus:max-sol:ultra-astra:low': ['claude:claude-opus-5-5:max', 'codex:gpt-6.1-sol:ultra', 'codex:gpt-6-astra:low'],
+    'opus-sol': ['claude:claude-opus-5-5:high', 'codex:gpt-6.2-sol:high'],
+    'sol-opus': ['codex:gpt-6.2-sol:high', 'claude:claude-opus-5-5:high'],
+    'opus-fable-sol': ['claude:claude-opus-5-5:high', 'claude:claude-fable-5-2:high', 'codex:gpt-6.2-sol:high'],
+    'fable-astra': ['claude:claude-fable-5-2:high', 'codex:gpt-6.2-astra:high'],
+    'opus:max-sol:ultra-astra:low': ['claude:claude-opus-5-5:max', 'codex:gpt-6.2-sol:ultra', 'codex:gpt-6.2-astra:low'],
   };
   for (const [team, reviewers] of Object.entries(cases)) {
     for (const args of [['--team', team, prUrl], [`--team=${team}`, prUrl], [prUrl, '--team', team]]) {

@@ -7,7 +7,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 ## 必要なもの
 
 - Node.js 22 以降、macOS または Linux
-- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`
+- 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`（GPT 6.2 Astra・Sol には Codex CLI 0.166.0 以降が必要）
 
 ## インストール
 
@@ -57,7 +57,7 @@ npx skills remove review-team -g
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
 | 言葉での指定 | 「Sol も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-既定のレビュアーは Claude Fable 5.2・Codex GPT 6 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
+既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
 
 ## コマンドで（`rt`）
 

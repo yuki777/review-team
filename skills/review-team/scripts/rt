@@ -98,8 +98,8 @@ usage() {
   名前   CLI:モデル                使える effort
   opus   claude:claude-opus-5-5    low medium high xhigh max
   fable  claude:claude-fable-5-2   low medium high xhigh max
-  sol    codex:gpt-6.1-sol         low medium high xhigh max ultra
-  astra  codex:gpt-6-astra         low medium high xhigh max ultra
+  sol    codex:gpt-6.2-sol         low medium high xhigh max ultra
+  astra  codex:gpt-6.2-astra       low medium high xhigh max ultra
 
 例:
   rt https://github.com/OWNER/REPO/pull/123
@@ -119,13 +119,13 @@ USAGE
 }
 
 # チームのメンバー名を <cli>:<model> と、使える effort に対応付ける
-# （effort は claude 2.1.312・codex 0.164.0 で確かめた値）
+# （effort は claude 2.1.312 と、openai/codex の models.json（2026-11-18）で確かめた値。gpt-6.2-* は codex 0.166.0 以降が要る）
 member_spec() {
   case "$1" in
     opus)  echo "claude:claude-opus-5-5 low medium high xhigh max" ;;
     fable) echo "claude:claude-fable-5-2 low medium high xhigh max" ;;
-    sol)   echo "codex:gpt-6.1-sol low medium high xhigh max ultra" ;;
-    astra) echo "codex:gpt-6-astra low medium high xhigh max ultra" ;;
+    sol)   echo "codex:gpt-6.2-sol low medium high xhigh max ultra" ;;
+    astra) echo "codex:gpt-6.2-astra low medium high xhigh max ultra" ;;
     *) return 1 ;;
   esac
 }
