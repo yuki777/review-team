@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.4.1](https://github.com/yuki777/review-team/compare/v4.4.0...v4.4.1) - 2026-11-18
+
+- Codex のレビュアーを GPT 6.2 Astra・GPT 6.2 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/177
+
 ## [v4.4.0](https://github.com/yuki777/review-team/compare/v4.3.0...v4.4.0) - 2026-11-17
 
 - Approve できる状態になった PR を OS 通知で知らせ、リマインドする by @yuki777 in https://github.com/yuki777/review-team/pull/174
