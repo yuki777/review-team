@@ -69,7 +69,7 @@ for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$O
 
 終了コードが 2 なら、起動の引数か資料の不備で、レビューは始まっていない。`"$OUTPUT.log"` で原因を確かめて直してから、新しい出力先で起動し直す。ただし原因が利用者の設定ファイルの誤り（メッセージが「設定ファイルに誤りがあります」で始まる）なら、設定ファイルを書き換えたり `--reviewer` で代用したりせず、そのメッセージを利用者に伝えて終える。runner が終わる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
 
-レビュアーの一覧（CLI・モデル・effort）の既定値は、利用者の設定ファイル（`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json`）に `reviewers` があればそれ、無ければスキル同梱の [reviewers.json](config/reviewers.json)。runner が自分で読むので、既定のままなら何も渡さない。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
+レビュアーの一覧（CLI・モデル・effort）の既定値は、利用者の設定ファイル（`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json`）に `reviewers` があればそれ、無ければスキル同梱の [config/default.json](config/default.json)。runner が自分で読むので、既定のままなら何も渡さない。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
 `--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、次のコマンドでいまの既定の全員を確かめ、変えないレビュアーも既定値のまま含めて全員を指定する。利用者が「Sol も加えて」（`codex:gpt-6.2-sol:high`）のように頼んだ場合は、既定の全員にそのレビュアーを足して指定する。
 

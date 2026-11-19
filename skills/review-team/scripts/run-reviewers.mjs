@@ -22,7 +22,7 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --reviewer <cli>:<model>[:<effort>]
                                レビュアーを1人追加する（繰り返し指定可）。指定すると既定の一覧を置き換える
                                既定は設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/config.json）の reviewers、
-                               無ければスキル同梱の config/reviewers.json
+                               無ければスキル同梱の config/default.json
                                cli は claude / codex。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-2:max --reviewer codex:gpt-6.2-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
@@ -193,7 +193,7 @@ async function loadReviewers(specs) {
     }));
   }
   const configured = (await loadConfig()).reviewers;
-  if (!configured) return checkReviewers(JSON.parse(await readFile(join(skillDir, 'config', 'reviewers.json'), 'utf8')).reviewers);
+  if (!configured) return checkReviewers(JSON.parse(await readFile(join(skillDir, 'config', 'default.json'), 'utf8')).reviewers);
   try {
     return checkReviewers(configured);
   } catch (error) {

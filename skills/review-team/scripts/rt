@@ -59,7 +59,7 @@ usage() {
 
 オプション:
   --team <TEAM>
-      レビュアーを、既定（設定ファイルの reviewers、無ければスキル同梱の config/reviewers.json）の代わりに TEAM の顔ぶれにする。
+      レビュアーを、既定（設定ファイルの reviewers、無ければスキル同梱の config/default.json）の代わりに TEAM の顔ぶれにする。
       TEAM の書き方は下の「チーム」を参照。--team=<TEAM> の形でもよい。
   --with-consider
       Act On に加えて、Consider（要検討）の指摘も PR に投稿する。付けないと Act On だけを投稿する。
