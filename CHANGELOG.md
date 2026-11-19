@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.6.1](https://github.com/yuki777/review-team/compare/v4.6.0...v4.6.1) - 2026-11-19
+
+- 設定ファイルの名前を rt.json から config.json に変える by @yuki777 in https://github.com/yuki777/review-team/pull/183
+
 ## [v4.6.0](https://github.com/yuki777/review-team/compare/v4.5.0...v4.6.0) - 2026-11-19
 
 - ユーザーの設定ファイル（rt.json）で既定のレビュアーと --loop の対象・間隔を変えられるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/180
