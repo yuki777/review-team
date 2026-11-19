@@ -59,7 +59,7 @@ usage() {
 
 オプション:
   --team <TEAM>
-      レビュアーを、既定（設定ファイルの reviewers、無ければ config/reviewers.json）の代わりに TEAM の顔ぶれにする。
+      レビュアーを、既定（設定ファイルの reviewers、無ければスキル同梱の config/reviewers.json）の代わりに TEAM の顔ぶれにする。
       TEAM の書き方は下の「チーム」を参照。--team=<TEAM> の形でもよい。
   --with-consider
       Act On に加えて、Consider（要検討）の指摘も PR に投稿する。付けないと Act On だけを投稿する。
@@ -91,7 +91,7 @@ usage() {
   名前だけの --repo（owner/ なし）と、--org と --repo の併用はエラーになる（GitHub の検索では org: と repo: が絞り込みでなく和集合になるため）。
 
 設定ファイル:
-  ${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json に、自分用の既定値を JSON で書ける（無くてもよい）。
+  ${XDG_CONFIG_HOME:-~/.config}/review-team/config.json に、自分用の既定値を JSON で書ける（無くてもよい）。
   どれも、コマンドで指定したものが優先される。
 
     {

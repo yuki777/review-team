@@ -21,8 +21,8 @@ const help = `review-team: 同一資料を複数のCLI・モデルで独立レ�
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
   --reviewer <cli>:<model>[:<effort>]
                                レビュアーを1人追加する（繰り返し指定可）。指定すると既定の一覧を置き換える
-                               既定は設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json）の reviewers、
-                               無ければ config/reviewers.json
+                               既定は設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/config.json）の reviewers、
+                               無ければスキル同梱の config/reviewers.json
                                cli は claude / codex。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-2:max --reviewer codex:gpt-6.2-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、

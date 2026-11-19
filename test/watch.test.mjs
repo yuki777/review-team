@@ -116,7 +116,7 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   const result = await t.register('aaa', ['--effort', 'max']);
   assert.equal(result.registered, true);
   assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
-  // Scheduled jobs get the config directory too: a scheduled scan reads the user's rt.json through rt.
+  // Scheduled jobs get the config directory too: a scheduled scan reads the user's config.json through rt.
   assert.match(result.schedule.cron, / XDG_CONFIG_HOME='[^']*\/config' /);
   const s = await t.state();
   assert.equal(s.effort, 'max');

@@ -57,7 +57,7 @@ npx skills remove review-team -g
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
 | 言葉での指定 | 「Sol も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。自分用の既定に変えるには、下の[設定ファイル](#設定ファイル)に書きます。
+既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、スキル同梱の [config/reviewers.json](skills/review-team/config/reviewers.json) にあります。自分用の既定に変えるには、下の[設定ファイル](#設定ファイル)に書きます。
 
 ## コマンドで（`rt`）
 
@@ -78,7 +78,7 @@ rt は起動のたび（`--loop` では scan のたび）に GitHub の最新リ
 | 引数・オプション | 付けると何が起こるか |
 | --- | --- |
 | `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーを、既定（設定ファイルの `reviewers`、無ければ config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
+| `--team <TEAM>` | レビュアーを、既定（設定ファイルの `reviewers`、無ければスキル同梱の config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
 | `--with-consider` | Act On に加えて Consider も PR に投稿する（付けないと Act On だけ） |
 | `--force` | head がレビュー済みでも、もう一度レビューして投稿する（実行中のレビューがあれば、付けても見送る） |
 | `--print` | 対話画面を出さずに `claude -p` で動かし、レビューと投稿が終わるまで待ってから戻る（launchd などから呼ぶとき用） |
@@ -129,7 +129,7 @@ open -n "$(brew --prefix terminal-notifier)/terminal-notifier.app" --args -title
 
 ## 設定ファイル
 
-`${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json` に、自分用の既定値を書けます。スキルの外にあるので、スキルを更新しても消えません。ファイルが無ければ、スキルの既定値のまま動きます。
+`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json` に、自分用の既定値を書けます。スキルの外にあるので、スキルを更新しても消えません。ファイルが無ければ、スキルの既定値のまま動きます。
 
 ```json
 {
@@ -146,7 +146,7 @@ open -n "$(brew --prefix terminal-notifier)/terminal-notifier.app" --args -title
 
 | キー | 内容 |
 | --- | --- |
-| `reviewers` | 既定のレビュアー。形は [config/reviewers.json](skills/review-team/config/reviewers.json) の `reviewers` と同じで、`cli` は `claude` / `codex`、`effort` を省くと high。`rt` にも `/review-team` にも効く |
+| `reviewers` | 既定のレビュアー。形はスキル同梱の [config/reviewers.json](skills/review-team/config/reviewers.json) の `reviewers` と同じで、`cli` は `claude` / `codex`、`effort` を省くと high。`rt` にも `/review-team` にも効く |
 | `loop.org` | `rt --loop` で探す組織。`loop.repos` と一緒には書けない |
 | `loop.repos` | `rt --loop` で探すリポジトリ（`owner/name` の配列） |
 | `loop.interval` | `rt --loop` で scan と scan の間に待つ分（1以上の整数） |

@@ -34,7 +34,7 @@ printf '{"data":{"resource":{"url":"${prUrl}","state":"OPEN","isDraft":false,"he
 `);
   await chmod(join(bin, 'claude'), 0o755);
   await chmod(join(bin, 'gh'), 0o755);
-  // The user's config directory is always inside dir, so a developer's own rt.json never reaches a test.
+  // The user's config directory is always inside dir, so a developer's own config.json never reaches a test.
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config') };
   delete env.REVIEW_TEAM_PR_LOCK;
   return { dir, env };
@@ -277,11 +277,11 @@ test('相対パスで起動しても動き、claudeにはGitHubの表記のURL�
 
 const writeConfig = async (dir, config) => {
   await mkdir(join(dir, 'config', 'review-team'), { recursive: true });
-  await writeFile(join(dir, 'config', 'review-team', 'rt.json'), typeof config === 'string' ? config : JSON.stringify(config));
+  await writeFile(join(dir, 'config', 'review-team', 'config.json'), typeof config === 'string' ? config : JSON.stringify(config));
 };
 
 // The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.
-// rt's questions about the config file (config.mjs and --list-reviewers) go to the real node. config is written as rt.json.
+// rt's questions about the config file (config.mjs and --list-reviewers) go to the real node. config is written as config.json.
 async function loop(args, config) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-loop-'));
   const bin = join(dir, 'bin');
@@ -377,7 +377,7 @@ test('設定ファイルに誤りがあれば、--teamを付けても、claude�
       const { code, stderr, argv } = await start(args, ctx).done;
       assert.equal(code, 1, JSON.stringify(config));
       assert.equal(argv, null, JSON.stringify(config));
-      assert.match(stderr, /^設定ファイルに誤りがあります: .*\/config\/review-team\/rt\.json（/, JSON.stringify(config));
+      assert.match(stderr, /^設定ファイルに誤りがあります: .*\/config\/review-team\/config\.json（/, JSON.stringify(config));
       assert.equal(await readFile(`${prState(ctx.dir)}.reviewed`, 'utf8').catch(() => null), null, JSON.stringify(config));
     }
   }
