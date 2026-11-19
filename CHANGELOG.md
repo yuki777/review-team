@@ -1,8 +1,15 @@
 # Changelog
 
-## [v4.6.3](https://github.com/yuki777/review-team/compare/v4.6.2...v4.6.3) - 2026-11-19
+## [v4.7.0](https://github.com/yuki777/review-team/compare/v4.6.2...v4.7.0) - 2026-11-19
 
 - agy（Antigravity CLI）のレビュアー対応を戻し、Gemini 4 Neon（neon）を使えるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/189
+
+**新しい機能**: レビュアーに Gemini 4 Neon を加えられるようになりました。`rt --team` のメンバー `neon`、`--reviewer agy:gemini-4-neon:xhigh`、設定ファイルの `reviewers`（`{ "cli": "agy", "model": "gemini-4-neon", "effort": "xhigh" }`）で指定します。既定のレビュアーは変わらないので、指定しなければ動作は今までと同じです。
+
+- Antigravity CLI（`agy`。1.5.12 で確かめた）と、そのログイン、Neon を使える契約が要ります。effort は low / medium / high / xhigh で、max はありません。
+- Neon を使うと、レビュー対象のコードとクローンの内容は Google にも送られます。
+- agy には OS のサンドボックスがありません。書き込みとコマンド実行は、スキルが実行のたびに渡すエージェント定義で止めています。agy は利用者のふだんの設定（MCP・ルール）のまま動きます。
+- agy はクローンをファイル単位で読めますが、一覧と検索はできません。そのぶん時間がかかります（小さな差分の xhigh で約9分でした）。
 
 ## [v4.6.2](https://github.com/yuki777/review-team/compare/v4.6.1...v4.6.2) - 2026-11-19
 
