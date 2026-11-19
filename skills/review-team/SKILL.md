@@ -1,6 +1,6 @@
 ---
 name: review-team
-description: "明示的に依頼された変更を、Claude Code・Codex の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
+description: "明示的に依頼された変更を、Claude Code・Codex・Antigravity の CLI で動かす複数モデルの同一入力レビューとリード判断で検討する。コードは変更しない。"
 disable-model-invocation: true
 argument-hint: "[--comment] [--watch] [--with-consider] [PR URL・番号・ブランチ] [依頼文]"
 ---
@@ -69,9 +69,9 @@ for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$O
 
 終了コードが 2 なら、起動の引数か資料の不備で、レビューは始まっていない。`"$OUTPUT.log"` で原因を確かめて直してから、新しい出力先で起動し直す。ただし原因が利用者の設定ファイルの誤り（メッセージが「設定ファイルに誤りがあります」で始まる）なら、設定ファイルを書き換えたり `--reviewer` で代用したりせず、そのメッセージを利用者に伝えて終える。runner が終わる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
 
-レビュアーの一覧（CLI・モデル・effort）の既定値は、利用者の設定ファイル（`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json`）に `reviewers` があればそれ、無ければスキル同梱の [config/default.json](config/default.json)。runner が自分で読むので、既定のままなら何も渡さない。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
+レビュアーの一覧（CLI・モデル・effort）の既定値は、利用者の設定ファイル（`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json`）に `reviewers` があればそれ、無ければスキル同梱の [config/default.json](config/default.json)。runner が自分で読むので、既定のままなら何も渡さない。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` / `agy`（Antigravity CLI）で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、次のコマンドでいまの既定の全員を確かめ、変えないレビュアーも既定値のまま含めて全員を指定する。利用者が「Sol も加えて」（`codex:gpt-6.2-sol:high`）のように頼んだ場合は、既定の全員にそのレビュアーを足して指定する。
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、次のコマンドでいまの既定の全員を確かめ、変えないレビュアーも既定値のまま含めて全員を指定する。利用者が「Sol も加えて」（`codex:gpt-6.2-sol:high`）「Neon も加えて」（`agy:gemini-4-neon:high`）のように頼んだ場合は、既定の全員にそのレビュアーを足して指定する。agy のモデル ID は、`agy models` に出る `gemini-4-neon-high` などから effort を除いたもの（`gemini-4-neon`）を使い、effort は別に指定する。
 
 ```sh
 node "$SKILL_DIR/scripts/run-reviewers.mjs" --list-reviewers
@@ -81,11 +81,13 @@ node "$SKILL_DIR/scripts/run-reviewers.mjs" --list-reviewers
 
 利用者に伝えるべき注意:
 
-- レビュー対象のコードとクローンの内容は、使うレビュアーの各社サービス（Anthropic・OpenAI）へ送られる。秘密情報を含む変更なら、実行前に確認する。
+- レビュー対象のコードとクローンの内容は、使うレビュアーの各社サービス（Anthropic・OpenAI、agy を使うなら Google）へ送られる。秘密情報を含む変更なら、実行前に確認する。
 - `--repo` や `--pr` を使うと、Codex はファイルを読むためにシェルを使う。read-only sandbox は書き込みと通信を止めるが、読み取りはクローンの外にも及ぶ可能性がある。
-- CLI の版が古い、または意図しない CLI が使われた場合（manifest の `cliPath` と `cliVersion` で確認）、環境変数 `REVIEW_TEAM_CLAUDE_CLI` / `REVIEW_TEAM_CODEX_CLI` で CLI の絶対パスを指定できる。
+- CLI の版が古い、または意図しない CLI が使われた場合（manifest の `cliPath` と `cliVersion` で確認）、環境変数 `REVIEW_TEAM_CLAUDE_CLI` / `REVIEW_TEAM_CODEX_CLI` / `REVIEW_TEAM_AGY_CLI` で CLI の絶対パスを指定できる。
+- agy は利用者のふだんの設定（ホームディレクトリの設定・ログイン）のまま起動する。利用者が入れている MCP やルールがレビュアーの文脈に入ることがある。agy が未ログインだと、ブラウザでのログインが始まることがある。
+- agy には OS のサンドボックスが無い。書き込みとコマンド実行を止めているのは、runner が渡すカスタムエージェントの定義だけ（agy 1.5.12 で、この定義があるとファイルの読み取りしか行われないことを確かめた）。エージェントの名前は実行のたびに変えるので、レビュー対象のクローンに入っている定義が選ばれることはない。agy は `--repo` や `--pr` のクローンをファイル単位で読めるが、一覧と検索はできない。
 
-子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。runner は各 CLI に、読み取り系ツールだけを使う設定と、書き込み・コマンド実行・Web・MCP・再委譲を止める設定を渡す（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。Claude と Codex は利用者の設定・MCP・hook を読まずに起動する。`plan` や `readonly` という名称だけで隔離を保証したことにしない。
+子はそれぞれ独立した一時作業場所で動く。`--repo` を指定した場合だけ、読み取り専用のクローンを読み取り系ツールで探索できる。runner は Claude と Codex に、読み取り系ツールだけを使う設定と、書き込み・コマンド実行・Web・MCP・再委譲を止める設定を渡す（Codex はファイルを読むためにシェルを使うが、read-only sandbox が書き込みと通信を止める）。agy には、ファイルを読むツールだけを持つカスタムエージェントの定義を、実行のたびに一時作業場所へ書き出して渡す（利用者の事前準備は要らない）。Claude と Codex は利用者の設定・MCP・hook を読まずに起動するが、agy はふだんの設定のまま起動する。`plan` や `readonly` という名称だけで隔離を保証したことにしない。
 
 完了条件: runner 終了後、`manifest.json` の全レビュアーに状態が記録されている。終了コード 1 の部分失敗でも次の判定に進み、失敗を「指摘なし」に置き換えない。`status` が `ok` のレビュアーが2人以上いれば、失敗について利用者に確かめずに3節へ進む。`manifest.json` が無い場合は runner が途中で強制終了された（SIGKILL、起動元プロセスの異常終了など）とみなし、全員分を取得不可として扱う。途中の `.md` は完了したレビューとして読まず、新しい出力先で再実行する。
 
@@ -215,4 +217,4 @@ claude -p --model claude-opus-5-5 --effort <登録時の値> --permission-mode a
 
 ## 由来
 
-cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。
+cursor/plugins の pstack `interrogate` をもとに、Cursor の Task を Claude Code・Codex・Antigravity の CLI 呼び出しへ置き換えた。四つの参照文書（`references/` の reviewer-prompt、rubric、code-quality-review、lead-judgment）は、upstream のコミット `df581122` の英語の原文をそのまま同梱し、書き換えない。runner は reviewer-prompt の `---` より後ろをテンプレートとして使い、参照用リポジトリを渡すときだけ、その説明の節を末尾に足す。レビュアーの出力は英語になりうるが、利用者に返す判定は日本語で書く。MIT ライセンスと Copyright (c) 2026 Lauren Tan は同梱の [LICENSE.pstack](LICENSE.pstack) に保持する。pstack 本体のインストールや外部スキルの読み込みは不要。

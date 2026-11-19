@@ -124,6 +124,9 @@ usage() {
   fable  claude:claude-fable-5-2   low medium high xhigh max
   sol    codex:gpt-6.2-sol         low medium high xhigh max ultra
   astra  codex:gpt-6.2-astra       low medium high xhigh max ultra
+  neon   agy:gemini-4-neon         low medium high xhigh
+
+  neon は Antigravity CLI（agy）で動く。agy のログインと、Neon を使える契約が要る。
 
 例:
   rt https://github.com/OWNER/REPO/pull/123
@@ -145,13 +148,14 @@ USAGE
 }
 
 # チームのメンバー名を <cli>:<model> と、使える effort に対応付ける
-# （effort は claude 2.1.312 と、openai/codex の models.json（2026-11-18）で確かめた値。gpt-6.2-* は codex 0.166.0 以降が要る）
+# （effort は claude 2.1.312、openai/codex の models.json（2026-11-18）、agy 1.5.12 で確かめた値。gpt-6.2-* は codex 0.166.0 以降が要る）
 member_spec() {
   case "$1" in
     opus)  echo "claude:claude-opus-5-5 low medium high xhigh max" ;;
     fable) echo "claude:claude-fable-5-2 low medium high xhigh max" ;;
     sol)   echo "codex:gpt-6.2-sol low medium high xhigh max ultra" ;;
     astra) echo "codex:gpt-6.2-astra low medium high xhigh max ultra" ;;
+    neon)  echo "agy:gemini-4-neon low medium high xhigh" ;;
     *) return 1 ;;
   esac
 }
