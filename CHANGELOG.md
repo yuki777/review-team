@@ -1,5 +1,11 @@
 # Changelog
 
+## [v4.6.0](https://github.com/yuki777/review-team/compare/v4.5.0...v4.6.0) - 2026-11-19
+
+- ユーザーの設定ファイル（rt.json）で既定のレビュアーと --loop の対象・間隔を変えられるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/180
+
+**新しい機能**: `${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json` に、既定のレビュアー（`reviewers`）と `rt --loop` の対象・間隔（`loop.org` か `loop.repos`、`loop.interval`）を書けるようになりました。コマンドの指定が設定ファイルより優先されます。対象を書いておけば `rt --loop` だけで起動できます。書き方は README の「設定ファイル」を参照してください。ファイルが無ければ、動作は今までと変わりません。
+
 ## [v4.5.0](https://github.com/yuki777/review-team/compare/v4.4.0...v4.5.0) - 2026-11-18
 
 - Codex のレビュアーを GPT 6.2 Astra・GPT 6.2 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/177
