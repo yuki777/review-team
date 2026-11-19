@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.5.1](https://github.com/yuki777/review-team/compare/v4.5.0...v4.5.1) - 2026-11-19
+
+- ユーザーの設定ファイル（rt.json）で既定のレビュアーと --loop の対象・間隔を変えられるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/180
+
 ## [v4.5.0](https://github.com/yuki777/review-team/compare/v4.4.0...v4.5.0) - 2026-11-18
 
 - Codex のレビュアーを GPT 6.2 Astra・GPT 6.2 Sol にする by @yuki777 in https://github.com/yuki777/review-team/pull/177
