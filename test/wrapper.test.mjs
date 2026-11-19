@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const wrapper = new URL('../skills/review-team/scripts/rt', import.meta.url).pathname;
-const reviewersJson = new URL('../skills/review-team/config/reviewers.json', import.meta.url).pathname;
+const defaultJson = new URL('../skills/review-team/config/default.json', import.meta.url).pathname;
 const skillDir = new URL('../skills/review-team', import.meta.url).pathname;
 const versionFile = new URL('../skills/review-team/VERSION', import.meta.url).pathname;
 const prUrl = 'https://example.test/acme/widget/pull/7';
@@ -84,8 +84,8 @@ test('チーム名はメンバー名を-でつないだもので、書いた順�
   }
 });
 
-test('fable:xhigh-astra:xhighはconfig/reviewers.jsonの既定と同じ2人になる', async () => {
-  const defaults = JSON.parse(await readFile(reviewersJson, 'utf8')).reviewers
+test('fable:xhigh-astra:xhighはconfig/default.jsonの既定と同じ2人になる', async () => {
+  const defaults = JSON.parse(await readFile(defaultJson, 'utf8')).reviewers
     .map(({ cli, model, effort }) => `${cli}:${model}:${effort}`);
   const { argv } = await run(['--team', 'fable:xhigh-astra:xhigh', prUrl]);
   assert.equal(argv.at(-1), prompt(defaults));

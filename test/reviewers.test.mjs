@@ -92,8 +92,8 @@ for (const [spec, message] of [
   });
 }
 
-test('既定のレビュアーは、設定ファイルのreviewersがあればそれ、無ければスキル同梱のconfig/reviewers.jsonになる', async () => {
-  const builtin = JSON.parse(await readFile(new URL('../skills/review-team/config/reviewers.json', import.meta.url), 'utf8')).reviewers
+test('既定のレビュアーは、設定ファイルのreviewersがあればそれ、無ければスキル同梱のconfig/default.jsonになる', async () => {
+  const builtin = JSON.parse(await readFile(new URL('../skills/review-team/config/default.json', import.meta.url), 'utf8')).reviewers
     .map(({ cli, model, effort }) => `${cli}:${model}:${effort}\n`).join('');
   assert.deepEqual(await list().then(({ code, stdout }) => [code, stdout]), [0, builtin]);
   // loop だけの設定ファイルでは、レビュアーは変わらない。
