@@ -4,6 +4,8 @@
 
 - 設定ファイルの名前を rt.json から config.json に変える by @yuki777 in https://github.com/yuki777/review-team/pull/183
 
+**動作の変更**: 利用者の設定ファイルの名前が `rt.json` から `config.json`（`${XDG_CONFIG_HOME:-~/.config}/review-team/config.json`）に変わりました。v4.6.0 で `rt.json` を作っていた場合は、`config.json` に名前を変えてください。`rt.json` は読まれなくなり、置いたままだとスキルの既定値で動きます。書けるキーと優先順位は変わりません。
+
 ## [v4.6.0](https://github.com/yuki777/review-team/compare/v4.5.0...v4.6.0) - 2026-11-19
 
 - ユーザーの設定ファイル（rt.json）で既定のレビュアーと --loop の対象・間隔を変えられるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/180
