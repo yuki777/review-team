@@ -34,7 +34,7 @@ usage() {
 
 使い方:
   rt [--team <TEAM>] [--with-consider] [--print] [--force] <PR-URL>
-  rt --loop (--org <組織> | --repo <owner/name>...) [--interval <分>] [--team <TEAM>] [--with-consider]
+  rt --loop [--org <組織> | --repo <owner/name>...] [--interval <分>] [--team <TEAM>] [--with-consider]
   rt --help | --version
 
 説明:
@@ -59,7 +59,7 @@ usage() {
 
 オプション:
   --team <TEAM>
-      レビュアーを、既定（config/reviewers.json）の代わりに TEAM の顔ぶれにする。
+      レビュアーを、既定（設定ファイルの reviewers、無ければ config/reviewers.json）の代わりに TEAM の顔ぶれにする。
       TEAM の書き方は下の「チーム」を参照。--team=<TEAM> の形でもよい。
   --with-consider
       Act On に加えて、Consider（要検討）の指摘も PR に投稿する。付けないと Act On だけを投稿する。
@@ -72,7 +72,7 @@ usage() {
   --loop
       PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。
       scan が終わるたびに --interval 分待ち、また scan する。Ctrl-C で止まる。
-      --org か --repo のどちらか一方が必要（両方は指定できない）。
+      --org か --repo のどちらか一方が必要（両方は指定できない）。設定ファイルの loop に書いてあれば省ける。
       対象は open で draft でない PR（Renovate の PR とアーカイブ済みリポジトリを除く）。
       コンフリクト・CI の失敗か実行中・ウォッチ中・レビュー中・同じ head でレビュー済みの PR は見送る。
       レビューが投稿まで終わらなかった head は、次の scan で1回だけやり直し、それも失敗したら新しい push まで見送る。
@@ -81,7 +81,7 @@ usage() {
   --repo <owner/name>
       --loop で、このリポジトリだけを探す。複数回指定でき、別の組織のリポジトリも混ぜられる。
   --interval <分>
-      --loop で scan と scan の間に待つ分。1以上の整数。省略すると 10。
+      --loop で scan と scan の間に待つ分。1以上の整数。省略すると、設定ファイルの loop.interval、それも無ければ 10。
   -h, --help
       このヘルプを出して終わる。
   --version
@@ -89,6 +89,30 @@ usage() {
 
   --org・--repo・--interval は --loop と一緒のときだけ使え（--force は --loop と一緒には使えない）、「--org 名前」の形だけ受け付ける。
   名前だけの --repo（owner/ なし）と、--org と --repo の併用はエラーになる（GitHub の検索では org: と repo: が絞り込みでなく和集合になるため）。
+
+設定ファイル:
+  ${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json に、自分用の既定値を JSON で書ける（無くてもよい）。
+  どれも、コマンドで指定したものが優先される。
+
+    {
+      "reviewers": [
+        { "cli": "claude", "model": "claude-opus-5-5", "effort": "max" },
+        { "cli": "codex", "model": "gpt-6.2-sol", "effort": "xhigh" }
+      ],
+      "loop": { "repos": ["OWNER/REPO", "OTHER/REPO"], "interval": 30 }
+    }
+
+  reviewers      既定のレビュアー。--team を付けると使わない。/review-team を直接呼んだときにも効く。
+                 レビューのたびに読むので、--loop を動かしたままでも次のレビューから変わる。
+                 ウォッチ中の PR の再レビューは、登録したときのレビュアーのまま変わらない。
+  loop.org       --loop で探す組織。loop.repos と一緒には書けない。
+  loop.repos     --loop で探すリポジトリ（owner/name の配列）。
+                 --org か --repo を付けると、loop.org と loop.repos はどちらも使わない。
+  loop.interval  --loop で scan と scan の間に待つ分。
+                 loop の値は --loop の起動時に1回だけ読む。変えたら起動し直す。
+
+  JSON として読めない、ほかのキーがある、値の形が違うときは、claude を起動せずに終了ステータス 1 で終わる
+  （--team や --org で使わない項目の誤りでも止まる）。effort がそのモデルで使える値かは確かめない。
 
 チーム:
   TEAM はメンバー名を - でつないだもの（順不同）。書いた順がレビュアーの順になる。
@@ -110,9 +134,11 @@ usage() {
       Consider の指摘も投稿する
   rt --loop --repo OWNER/REPO --repo OTHER/REPO --interval 30
       OWNER/REPO と OTHER/REPO で自分にレビュー依頼が来た PR を、30分おきに探してレビューする
+  rt --loop
+      設定ファイルの loop に書いた対象と間隔で、同じことをする
 
 終了ステータス:
-  オプションや引数が正しくないときは 1。--help・--version と、レビューを見送ったときは 0。
+  オプション・引数・設定ファイルが正しくないときは 1。--help・--version と、レビューを見送ったときは 0。
   GitHub に PR を問い合わせられないなど、claude を起動する前に失敗したときは 2。
   それ以外は claude の終了ステータスを返す。--loop は Ctrl-C で止めるまで戻らない。
 USAGE
@@ -217,8 +243,18 @@ if [ -n "$LOOP" ]; then
   [ -z "$REVIEW_TARGET" ] || fail "--loop と URL は同時に指定できません"
   [ -z "$PRINT" ] || fail "--loop と --print は同時に指定できません"
   [ -z "$FORCE" ] || fail "--loop と --force は同時に指定できません"
-  { [ -n "$ORG" ] || [ -n "$REPOS" ]; } && { [ -z "$ORG" ] || [ -z "$REPOS" ]; } ||
-    fail "--loop には --org か --repo のどちらか一方を指定してください"
+  [ -z "$ORG" ] || [ -z "$REPOS" ] || fail "--loop には --org か --repo のどちらか一方を指定してください"
+  # 設定ファイルの loop は、コマンドで指定しなかったものにだけ使う（config.mjs が値の形を確かめてから出す）
+  loop_config="$(node "$(script_dir)/config.mjs" loop)" || exit 1
+  given="$ORG$REPOS"
+  while read -r key value; do
+    case "$key" in
+      org) [ -n "$given" ] || ORG="$value" ;;
+      repo) [ -n "$given" ] || REPOS="$REPOS --repo $value" ;;
+      interval) INTERVAL="${INTERVAL:-$value}" ;;
+    esac
+  done <<< "$loop_config"
+  [ -n "$ORG$REPOS" ] || fail "--loop には --org か --repo のどちらか一方を指定してください（設定ファイルの loop.org か loop.repos でもよい）"
   INTERVAL="${INTERVAL:-10}"
   case "$INTERVAL" in
     ''|0*|*[!0-9]*) fail "--interval は1以上の整数（分）で指定してください: $INTERVAL" ;;
@@ -251,6 +287,9 @@ if [ -n "$TEAM" ]; then
     reviewer_args="$reviewer_args --reviewer ${spec%% *}:$effort"
   done
 fi
+
+# 設定ファイルの誤りは、PR のロックを取る（レビューの開始を数える）前に止める。--team で reviewers を使わないときも確かめる
+node "$(script_dir)/run-reviewers.mjs" --list-reviewers > /dev/null || exit 1
 
 if [ -n "$LOOP" ]; then
   scanner="$(script_dir)/scan-prs.mjs"

@@ -67,11 +67,17 @@ runner は段階ごと（PR の取得、クローン、fetch、レビュアー�
 for i in $(seq 1 18); do [ -f "$OUTPUT.exit" ] && break; sleep 30; done; cat "$OUTPUT.exit" 2>/dev/null; ls "$OUTPUT" 2>/dev/null
 ```
 
-終了コードが 2 なら、起動の引数か資料の不備で、レビューは始まっていない。`"$OUTPUT.log"` で原因を確かめて直してから、新しい出力先で起動し直す。runner が終わる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
+終了コードが 2 なら、起動の引数か資料の不備で、レビューは始まっていない。`"$OUTPUT.log"` で原因を確かめて直してから、新しい出力先で起動し直す。ただし原因が利用者の設定ファイルの誤り（メッセージが「設定ファイルに誤りがあります」で始まる）なら、設定ファイルを書き換えたり `--reviewer` で代用したりせず、そのメッセージを利用者に伝えて終える。runner が終わる前に応答を終えない。応答を終えると、ホストによっては runner ごと止まり、レビューが中断される。
 
-レビュアーの一覧（CLI・モデル・effort）の既定値は [reviewers.json](config/reviewers.json)。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
+レビュアーの一覧（CLI・モデル・effort）の既定値は、利用者の設定ファイル（`${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json`）に `reviewers` があればそれ、無ければ [reviewers.json](config/reviewers.json)。runner が自分で読むので、既定のままなら何も渡さない。利用者が組み合わせを指定した場合だけ、`--reviewer <cli>:<model>[:<effort>]` を繰り返して一覧を置き換える。`cli` は `claude` / `codex` で、同じ CLI を複数並べてもよい。モデルが利用不能でも別モデルへ自動変更しない。CLI の使い方は同梱 runner の `--help` で確認できる。
 
-`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、変えないレビュアーも既定値のまま含めて全員を指定する。既定は Claude（`claude:claude-fable-5-2:xhigh`）・Codex（`codex:gpt-6.2-astra:xhigh`）の2人。利用者が「Sol も加えて」（`codex:gpt-6.2-sol:high`）のように頼んだ場合は、既定の2人にそのレビュアーを足して指定する。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
+`--reviewer` は既定の一覧を丸ごと置き換える。利用者が一部だけ変えたい場合（例: 「Claude は effort max で」）は、次のコマンドでいまの既定の全員を確かめ、変えないレビュアーも既定値のまま含めて全員を指定する。利用者が「Sol も加えて」（`codex:gpt-6.2-sol:high`）のように頼んだ場合は、既定の全員にそのレビュアーを足して指定する。
+
+```sh
+node "$SKILL_DIR/scripts/run-reviewers.mjs" --list-reviewers
+```
+
+出力は1行に1人で、そのまま `--reviewer` に渡せる形（`<cli>:<model>:<effort>`）。利用者が制限時間を指定した場合は `--timeout <秒>` を付ける。
 
 利用者に伝えるべき注意:
 

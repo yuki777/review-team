@@ -20,7 +20,7 @@ async function startWithHangingClis(extraArgs = allClis) {
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
     '--output', join(dir, 'out'), ...extraArgs], {
     stdio: 'ignore',
-    env: { ...process.env, TMPDIR: dir, REVIEW_TEAM_CLAUDE_CLI: cli,
+    env: { ...process.env, TMPDIR: dir, XDG_CONFIG_HOME: join(dir, 'config'), REVIEW_TEAM_CLAUDE_CLI: cli,
       REVIEW_TEAM_CODEX_CLI: cli },
   });
   const exited = new Promise(resolve => child.on('exit', code => resolve(code)));

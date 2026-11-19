@@ -55,7 +55,7 @@ cp "${diff}" "$out/reviewed.diff"
   await writeFile(join(bin, 'open'), `#!/bin/sh\nprintf '%s|' "$@" >> "${openLog}"\necho >> "${openLog}"\n`);
   for (const name of ['gh', 'brew', 'open']) await chmod(join(bin, name), 0o755);
   await chmod(lead, 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'),
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config'),
     REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1', REVIEW_TEAM_QUIET: '0', ...extraEnv };
   delete env.REVIEW_TEAM_DEPTH;
   // One answer serves both the watch query and the notify query, which reads the fields after headRefOid.
@@ -116,6 +116,8 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   const result = await t.register('aaa', ['--effort', 'max']);
   assert.equal(result.registered, true);
   assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
+  // Scheduled jobs get the config directory too: a scheduled scan reads the user's rt.json through rt.
+  assert.match(result.schedule.cron, / XDG_CONFIG_HOME='[^']*\/config' /);
   const s = await t.state();
   assert.equal(s.effort, 'max');
   assert.equal(s.maxRereviews, 5);

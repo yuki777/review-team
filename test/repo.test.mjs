@@ -40,7 +40,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"指摘な�
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
     '--output', join(dir, 'out'), '--repo', repo, '--ref', first, '--timeout', '30'], {
     stdio: 'ignore',
-    env: { ...process.env, TMPDIR: dir, XDG_STATE_HOME: state,
+    env: { ...process.env, TMPDIR: dir, XDG_STATE_HOME: state, XDG_CONFIG_HOME: join(dir, 'config'),
       REVIEW_TEAM_CLAUDE_CLI: cli, REVIEW_TEAM_CODEX_CLI: '/nonexistent' },
   });
   await new Promise(resolve => child.on('exit', resolve));
@@ -73,7 +73,8 @@ test('--refを解決できなければ起動前に拒否する', async () => {
   execFileSync('git', ['init', '-q', join(dir, 'repo')]);
   await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '意図', diff: '差分' }));
   const child = spawn(process.execPath, [runner, '--packet', join(dir, 'packet.json'),
-    '--output', join(dir, 'out'), '--repo', join(dir, 'repo'), '--ref', 'no-such-ref'], { stdio: 'ignore' });
+    '--output', join(dir, 'out'), '--repo', join(dir, 'repo'), '--ref', 'no-such-ref'],
+    { stdio: 'ignore', env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config') } });
   assert.equal(await new Promise(resolve => child.on('exit', resolve)), 2);
   await rm(dir, { recursive: true, force: true });
 });
