@@ -74,6 +74,8 @@ test('チーム名はメンバー名を-でつないだもので、書いた順�
     'opus-fable-sol': ['claude:claude-opus-5-5:high', 'claude:claude-fable-5-2:high', 'codex:gpt-6.2-sol:high'],
     'fable-astra': ['claude:claude-fable-5-2:high', 'codex:gpt-6.2-astra:high'],
     'opus:max-sol:ultra-astra:low': ['claude:claude-opus-5-5:max', 'codex:gpt-6.2-sol:ultra', 'codex:gpt-6.2-astra:low'],
+    'fable:xhigh-astra:xhigh-neon:xhigh': ['claude:claude-fable-5-2:xhigh', 'codex:gpt-6.2-astra:xhigh', 'agy:gemini-4-neon:xhigh'],
+    'neon': ['agy:gemini-4-neon:high'],
   };
   for (const [team, reviewers] of Object.entries(cases)) {
     for (const args of [['--team', team, prUrl], [`--team=${team}`, prUrl], [prUrl, '--team', team]]) {
@@ -115,7 +117,7 @@ test('不明なメンバー・重複・空のメンバー・使えないeffort�
   for (const args of [
     ['--team', 'opus-gemini', prUrl], ['--team', 'opus-opus', prUrl], ['--team', 'opus--sol', prUrl], ['--team', '-opus', prUrl],
     ['--team', 'opus-*', prUrl],
-    ['--team', 'opus:ultra', prUrl], ['--team', 'grok-opus', prUrl], ['--team', 'opus:bogus', prUrl], ['--team', 'opus:', prUrl],
+    ['--team', 'opus:ultra', prUrl], ['--team', 'neon:max', prUrl], ['--team', 'grok-opus', prUrl], ['--team', 'opus:bogus', prUrl], ['--team', 'opus:', prUrl],
     ['--team', 'opus:max:x', prUrl], ['--team', ':high', prUrl], ['--team', 'opus:max-opus', prUrl], ['--team', 'opus', 'sol', prUrl], ['opus-sol', prUrl, prUrl], ['--team'], ['--effort', 'max', prUrl], [],
     ['--act-on-only', prUrl],
   ]) {

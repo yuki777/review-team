@@ -102,6 +102,12 @@ test('既定のレビュアーは、設定ファイルのreviewersがあれば�
   assert.deepEqual(await list(config).then(({ code, stdout }) => [code, stdout]), [0, 'claude:model-a:max\ncodex:model-b:high\n']);
 });
 
+test('cliにはclaude・codex・agyを書ける', async () => {
+  const specs = ['claude:claude-fable-5-2:xhigh', 'codex:gpt-6.2-astra:xhigh', 'agy:gemini-4-neon:xhigh'];
+  const { code, stdout } = await list(undefined, specs.flatMap(spec => ['--reviewer', spec]));
+  assert.deepEqual([code, stdout], [0, specs.map(spec => `${spec}\n`).join('')]);
+});
+
 test('--reviewerは設定ファイルのreviewersを丸ごと置き換え、設定ファイルが壊れていても読まない', async () => {
   for (const config of [{ reviewers: [{ cli: 'claude', model: 'model-a' }] }, '{']) {
     const { code, stdout } = await list(config, ['--reviewer', 'codex:model-c:low']);

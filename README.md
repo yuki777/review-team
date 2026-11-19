@@ -1,6 +1,6 @@
 # review-team
 
-同じ変更を、Claude Code・Codex の CLI で動かす複数のモデルに独立してレビューさせ、主担当の AI が全指摘を根拠付きで判定するスキルです。コードは変更しません。
+同じ変更を、Claude Code・Codex・Antigravity の CLI で動かす複数のモデルに独立してレビューさせ、主担当の AI が全指摘を根拠付きで判定するスキルです。コードは変更しません。
 
 pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skills/interrogate) をもとにしています。pstack のインストールは不要です。
 
@@ -8,6 +8,7 @@ pstack の [interrogate](https://github.com/cursor/plugins/tree/main/pstack/skil
 
 - Node.js 22 以降、macOS または Linux
 - 使うレビュアーの CLI と、それぞれのログイン。既定は `claude`・`codex`（GPT 6.2 Astra・Sol には Codex CLI 0.166.0 以降が必要）
+- Gemini 4 Neon を加える場合は `agy`（Antigravity CLI。1.5.12 で確かめた）と、Neon を使える契約。`agy models` に `gemini-4-neon-*` が出なければ、agy を更新してください。agy には OS のサンドボックスが無く、書き込みとコマンド実行はスキルが渡すエージェント定義で止めています。agy はクローンをファイル単位で読めますが、一覧と検索はできません。レビュー対象のコードは Google にも送られます
 
 ## インストール
 
@@ -54,7 +55,7 @@ npx skills remove review-team -g
 | `--comment` | プレビューの承認を待たずに PR へ投稿する（Act On をインラインコメントと総評に。Noted と Dismissed は投稿せず、Consider も `--with-consider` が無ければ投稿しない）。付けなくても、レビュー後に「PR にコメントして」と頼めばプレビューを見せてから投稿する |
 | `--with-consider` | Consider も PR に投稿する（既定は Act On だけ） |
 | `--watch` | 投稿後も PR を見回り、push のたびに自動で再レビューして投稿する（1分ごとの見回りを launchd に登録。PR のマージかクローズ、12時間、再レビュー5回のどれかで解除） |
-| `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
+| `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` / `agy` |
 | 言葉での指定 | 「Sol も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
 既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、スキル同梱の [config/default.json](skills/review-team/config/default.json) にあります。自分用の既定に変えるには、下の[設定ファイル](#設定ファイル)に書きます。
@@ -78,7 +79,7 @@ rt は起動のたび（`--loop` では scan のたび）に GitHub の最新リ
 | 引数・オプション | 付けると何が起こるか |
 | --- | --- |
 | `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーを、既定（設定ファイルの `reviewers`、無ければスキル同梱の config/default.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
+| `--team <TEAM>` | レビュアーを、既定（設定ファイルの `reviewers`、無ければスキル同梱の config/default.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra` `neon`、`:<effort>` を省くと high。一覧と使える effort は `rt --help` |
 | `--with-consider` | Act On に加えて Consider も PR に投稿する（付けないと Act On だけ） |
 | `--force` | head がレビュー済みでも、もう一度レビューして投稿する（実行中のレビューがあれば、付けても見送る） |
 | `--print` | 対話画面を出さずに `claude -p` で動かし、レビューと投稿が終わるまで待ってから戻る（launchd などから呼ぶとき用） |
@@ -146,7 +147,7 @@ open -n "$(brew --prefix terminal-notifier)/terminal-notifier.app" --args -title
 
 | キー | 内容 |
 | --- | --- |
-| `reviewers` | 既定のレビュアー。形はスキル同梱の [config/default.json](skills/review-team/config/default.json) の `reviewers` と同じで、`cli` は `claude` / `codex`、`effort` を省くと high。`rt` にも `/review-team` にも効く |
+| `reviewers` | 既定のレビュアー。形はスキル同梱の [config/default.json](skills/review-team/config/default.json) の `reviewers` と同じで、`cli` は `claude` / `codex` / `agy`、`effort` を省くと high。`rt` にも `/review-team` にも効く |
 | `loop.org` | `rt --loop` で探す組織。`loop.repos` と一緒には書けない |
 | `loop.repos` | `rt --loop` で探すリポジトリ（`owner/name` の配列） |
 | `loop.interval` | `rt --loop` で scan と scan の間に待つ分（1以上の整数） |

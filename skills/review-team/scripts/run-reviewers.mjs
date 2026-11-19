@@ -6,13 +6,14 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
+import { agy } from './agy.mjs';
 import { claude } from './claude.mjs';
 import { codex } from './codex.mjs';
 import { configPath, loadConfig } from './config.mjs';
 import { classifyError } from './errors.mjs';
 
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const adapters = { claude, codex };
+const adapters = { claude, codex, agy };
 const execFileAsync = promisify(execFile);
 // stdout carries only the final summary, so a background run's log shows nothing until the end without these lines.
 const progress = message => console.error(`[review-team ${new Date().toISOString()}] ${message}`);
@@ -23,7 +24,7 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
                                レビュアーを1人追加する（繰り返し指定可）。指定すると既定の一覧を置き換える
                                既定は設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/config.json）の reviewers、
                                無ければスキル同梱の config/default.json
-                               cli は claude / codex。effort の既定は high
+                               cli は claude / codex / agy（Antigravity CLI）。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-2:max --reviewer codex:gpt-6.2-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
                                PR の head を読み取り専用で探索させる。資料の diff と intent を省略すると PR から補う
@@ -207,7 +208,7 @@ function checkReviewers(entries) {
   for (const { cli } of entries) totals[cli] = (totals[cli] ?? 0) + 1;
   const seen = {};
   return entries.map(({ cli, model, effort = 'high' }) => {
-    if (!Object.hasOwn(adapters, cli)) throw new Error(`未対応のCLIです: ${cli}（claude / codex）`);
+    if (!Object.hasOwn(adapters, cli)) throw new Error(`未対応のCLIです: ${cli}（claude / codex / agy）`);
     if (typeof model !== 'string' || !modelPattern.test(model)) throw new Error(`${cli}のモデルIDが不正です: ${model}`);
     if (typeof effort !== 'string' || !/^[a-z]+$/.test(effort)) throw new Error(`${cli}のreasoning effortが不正です: ${effort}`);
     seen[cli] = (seen[cli] ?? 0) + 1;
