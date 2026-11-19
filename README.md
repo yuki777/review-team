@@ -57,7 +57,7 @@ npx skills remove review-team -g
 | `--reviewer <cli>:<model>:<effort>` | レビュアーを指定する（1人につき1つ。既定の一覧を丸ごと置き換える）。`cli` は `claude` / `codex` |
 | 言葉での指定 | 「Sol も加えて」「Claude は effort max で」「制限時間30分で」「コミット abc123 の状態で」なども、主担当がオプションに変換する |
 
-既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。
+既定のレビュアーは Claude Fable 5.2・Codex GPT 6.2 Astra（effort はどちらも xhigh）で、[config/reviewers.json](skills/review-team/config/reviewers.json) にあります。自分用の既定に変えるには、下の[設定ファイル](#設定ファイル)に書きます。
 
 ## コマンドで（`rt`）
 
@@ -78,14 +78,14 @@ rt は起動のたび（`--loop` では scan のたび）に GitHub の最新リ
 | 引数・オプション | 付けると何が起こるか |
 | --- | --- |
 | `<PR-URL>` | その PR をレビューして投稿し、以後の push も自動で再レビューする |
-| `--team <TEAM>` | レビュアーを、既定（config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
+| `--team <TEAM>` | レビュアーを、既定（設定ファイルの `reviewers`、無ければ config/reviewers.json）の代わりに TEAM の顔ぶれにする。TEAM はメンバー名の `-` つなぎ（例: `opus-sol`、`opus:max-sol:xhigh`）。メンバーは `opus` `fable` `sol` `astra`、`:<effort>` を省くと high |
 | `--with-consider` | Act On に加えて Consider も PR に投稿する（付けないと Act On だけ） |
 | `--force` | head がレビュー済みでも、もう一度レビューして投稿する（実行中のレビューがあれば、付けても見送る） |
 | `--print` | 対話画面を出さずに `claude -p` で動かし、レビューと投稿が終わるまで待ってから戻る（launchd などから呼ぶとき用） |
-| `--loop` | PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる。`--org` か `--repo` のどちらか一方が必要 |
+| `--loop` | PR を1件指定する代わりに、自分にレビュー依頼が来ている PR を探してレビューする scan を繰り返す。scan が終わるたびに `--interval` 分待つ。Ctrl-C で止まる。`--org` か `--repo` のどちらか一方が必要（設定ファイルの `loop` に書いてあれば省ける） |
 | `--org <組織>` | `--loop` で、この組織の全リポジトリを探す |
 | `--repo <owner/name>` | `--loop` で、このリポジトリだけを探す（複数回指定でき、別の組織のリポジトリも混ぜられる） |
-| `--interval <分>` | `--loop` で scan と scan の間に待つ分（既定 10） |
+| `--interval <分>` | `--loop` で scan と scan の間に待つ分（省略すると、設定ファイルの `loop.interval`、それも無ければ 10） |
 | `-h`, `--help` / `--version` | ヘルプ / 版を出して終わる |
 
 `rt` は claude を起動する前に GitHub で PR の head を確かめ、同じ PR のレビュー（別の `rt`・`--loop`・ウォッチの再レビュー）が実行中のときと、head がレビュー済み（投稿まで終えた commit と同じ）のときは、claude を起動せずに終了ステータス 0 で見送ります。レビュー中の PR は、投稿を終えるか claude が終わるまで、ほかのレビューから見送られます。GitHub に問い合わせられないときは、claude を起動せずに終了ステータス 2 で終わります。
@@ -126,6 +126,36 @@ open -n "$(brew --prefix terminal-notifier)/terminal-notifier.app" --args -title
 ```
 
 2行目で macOS が通知の許可を尋ねたら許可します。通知が出れば準備は終わりです。
+
+## 設定ファイル
+
+`${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json` に、自分用の既定値を書けます。スキルの外にあるので、スキルを更新しても消えません。ファイルが無ければ、スキルの既定値のまま動きます。
+
+```json
+{
+  "reviewers": [
+    { "cli": "claude", "model": "claude-opus-5-5", "effort": "max" },
+    { "cli": "codex", "model": "gpt-6.2-sol", "effort": "xhigh" }
+  ],
+  "loop": {
+    "repos": ["OWNER/REPO", "OTHER/REPO"],
+    "interval": 30
+  }
+}
+```
+
+| キー | 内容 |
+| --- | --- |
+| `reviewers` | 既定のレビュアー。形は [config/reviewers.json](skills/review-team/config/reviewers.json) の `reviewers` と同じで、`cli` は `claude` / `codex`、`effort` を省くと high。`rt` にも `/review-team` にも効く |
+| `loop.org` | `rt --loop` で探す組織。`loop.repos` と一緒には書けない |
+| `loop.repos` | `rt --loop` で探すリポジトリ（`owner/name` の配列） |
+| `loop.interval` | `rt --loop` で scan と scan の間に待つ分（1以上の整数） |
+
+- **優先順位**: コマンドの指定、設定ファイル、スキルの既定値の順。`--reviewer`（`rt` では `--team`）を付けると `reviewers` は使わず、`rt --loop` に `--org` か `--repo` を付けると `loop.org` と `loop.repos` はどちらも使わない。`loop` に対象を書いておけば、`rt --loop` だけで起動できる。
+- **効くタイミング**: `reviewers` はレビューのたびに読むので、`rt --loop` を動かしたままでも次のレビューから変わる。`loop` は `rt --loop` の起動時に1回だけ読むので、変えたら起動し直す。ウォッチ中の PR の再レビューは、登録したときのレビュアーのまま変わらない。
+- **誤りがあるとき**: JSON として読めない、上の表に無いキーがある、値の形が違うときは、レビューを始めずにエラーで終わる（`rt` は claude を起動せずに終了ステータス 1。`--team` や `--org` で使わない項目の誤りでも止まる）。`effort` がそのモデルで使える値かは確かめないので、使えない値はそのレビュアーの失敗になる。いまの既定のレビュアーは `node ~/.agents/skills/review-team/scripts/run-reviewers.mjs --list-reviewers` で確かめられる。
+- **書けないもの**: 主担当のモデル（`rt` では Opus 5.5 に固定）、`--with-consider`、ウォッチの期限などは、設定ファイルでは変えられない。launchd に登録する `scan-prs.mjs install` も `loop` を読まない。
+- **`XDG_CONFIG_HOME`**: launchd や cron に登録する定期実行にも引き継ぐ。`scan-prs.mjs install` で登録済みの scan に反映するには、もう一度 `install` する。
 
 ## リリース
 

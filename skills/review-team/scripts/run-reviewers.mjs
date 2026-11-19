@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import { claude } from './claude.mjs';
 import { codex } from './codex.mjs';
+import { configPath, loadConfig } from './config.mjs';
 import { classifyError } from './errors.mjs';
 
 const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,7 +20,9 @@ const help = `review-team: 同一資料を複数のCLI・モデルで独立レ�
 
 node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレクトリ>
   --reviewer <cli>:<model>[:<effort>]
-                               レビュアーを1人追加する（繰り返し指定可）。指定すると config/reviewers.json の一覧を置き換える
+                               レビュアーを1人追加する（繰り返し指定可）。指定すると既定の一覧を置き換える
+                               既定は設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json）の reviewers、
+                               無ければ config/reviewers.json
                                cli は claude / codex。effort の既定は high
                                例: --reviewer claude:claude-opus-5-5 --reviewer claude:claude-fable-5-2:max --reviewer codex:gpt-6.2-astra
   --pr <PR-URL|PR番号>          GitHub の PR を対象にする。リポジトリを状態ディレクトリにキャッシュ用にクローンし、
@@ -27,11 +30,13 @@ node run-reviewers.mjs --packet <JSONファイル> --output <新規ディレク�
   --repo <パス>                 対象gitリポジトリ。指定コミットのクローンをレビュアーが読み取り専用で探索する
   --ref <コミット>              --repoで読ませるコミット（既定 HEAD）
   --timeout <秒>                各CLIの制限時間（既定 1200、最大3600）
+  --list-reviewers             レビュアーを起動せず、既定のレビュアー（--reviewer を付ければその一覧）を
+                               <cli>:<model>:<effort> の形で1行ずつ出して終わる
   --help                       説明のみ表示
 
 資料: {"intent":"変更の意図","diff":"差分または変更コード","context":[{"path":"パス","content":"周辺コード"}]}（--pr のときは省略可）
 出力: manifest.json、共通prompt.md、各CLIのレビュー本文と実行ログ
-終了コード: 0=全員完了、1=不足あり、2=引数または資料の不備
+終了コード: 0=全員完了、1=不足あり、2=引数・資料・設定ファイルの不備
 `;
 
 async function loadInput() {
@@ -39,9 +44,10 @@ async function loadInput() {
     packet: { type: 'string' }, output: { type: 'string' },
     reviewer: { type: 'string', multiple: true },
     timeout: { type: 'string', default: '1200' },
-    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, pr: { type: 'string' }, help: { type: 'boolean' },
+    repo: { type: 'string' }, ref: { type: 'string', default: 'HEAD' }, pr: { type: 'string' }, 'list-reviewers': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   if (values.help) return null;
+  if (values['list-reviewers']) return { listed: await loadReviewers(values.reviewer) };
   if (process.env.REVIEW_TEAM_DEPTH) throw new Error('子レビューからのreview-team再起動は禁止です。');
   if (process.platform === 'win32') throw new Error('このランナーはPOSIX環境で実行してください。');
   if (!values.output || !(values.packet || values.pr)) throw new Error('--outputと、--packetまたは--prが必要です。');
@@ -177,14 +183,25 @@ async function resolvePullRequest(spec) {
 
 const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
+// --reviewer replaces the whole list. Without it, the user's config file is read, then the list shipped with the skill.
 async function loadReviewers(specs) {
-  const entries = specs?.length
-    ? specs.map(spec => {
+  if (specs?.length) {
+    return checkReviewers(specs.map(spec => {
       const [cli, model, effort, ...rest] = spec.split(':');
       if (rest.length) throw new Error(`--reviewerは<cli>:<model>[:<effort>]で指定してください: ${spec}`);
       return { cli, model, effort };
-    })
-    : JSON.parse(await readFile(join(skillDir, 'config', 'reviewers.json'), 'utf8')).reviewers;
+    }));
+  }
+  const configured = (await loadConfig()).reviewers;
+  if (!configured) return checkReviewers(JSON.parse(await readFile(join(skillDir, 'config', 'reviewers.json'), 'utf8')).reviewers);
+  try {
+    return checkReviewers(configured);
+  } catch (error) {
+    throw new Error(`設定ファイルに誤りがあります: ${configPath()}（${error.message}）`);
+  }
+}
+
+function checkReviewers(entries) {
   if (!Array.isArray(entries) || !entries.length) throw new Error('レビュアーを1人以上指定してください。');
   const totals = {};
   for (const { cli } of entries) totals[cli] = (totals[cli] ?? 0) + 1;
@@ -344,6 +361,10 @@ async function main() {
   try {
     input = await loadInput();
     if (!input) { console.log(help); return; }
+    if (input.listed) {
+      for (const { cli, model, effort } of input.listed) console.log(`${cli}:${model}:${effort}`);
+      return;
+    }
     await mkdir(dirname(input.output), { recursive: true, mode: 0o700 });
     await mkdir(input.output, { mode: 0o700 });
     if (input.repo) {

@@ -50,7 +50,8 @@ fi
 `);
   await chmod(join(bin, 'gh'), 0o755);
   await chmod(join(bin, 'claude'), 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), REVIEW_TEAM_SCAN_TIMEOUT: '1' };
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config'),
+    REVIEW_TEAM_SCAN_TIMEOUT: '1' };
   delete env.REVIEW_TEAM_DEPTH;
   const setPrs = (prs, file = search) => writeFile(file, JSON.stringify({ data: { search: { nodes: prs.map(pr => ({
     url: url(pr.n), headRefOid: pr.head ?? 'aaa', mergeable: pr.mergeable ?? 'MERGEABLE',

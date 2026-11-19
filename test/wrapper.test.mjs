@@ -34,7 +34,8 @@ printf '{"data":{"resource":{"url":"${prUrl}","state":"OPEN","isDraft":false,"he
 `);
   await chmod(join(bin, 'claude'), 0o755);
   await chmod(join(bin, 'gh'), 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') };
+  // The user's config directory is always inside dir, so a developer's own rt.json never reaches a test.
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config') };
   delete env.REVIEW_TEAM_PR_LOCK;
   return { dir, env };
 }
@@ -274,18 +275,27 @@ test('相対パスで起動しても動き、claudeにはGitHubの表記のURL�
   assert.ok(await readFile(`${prState(ctx.dir)}.lock`, 'utf8'));
 });
 
+const writeConfig = async (dir, config) => {
+  await mkdir(join(dir, 'config', 'review-team'), { recursive: true });
+  await writeFile(join(dir, 'config', 'review-team', 'rt.json'), typeof config === 'string' ? config : JSON.stringify(config));
+};
+
 // The fake node records each scan it is started with, and the fake sleep records its seconds and stops the loop.
-async function loop(args) {
+// rt's questions about the config file (config.mjs and --list-reviewers) go to the real node. config is written as rt.json.
+async function loop(args, config) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-loop-'));
   const bin = join(dir, 'bin');
   await mkdir(bin);
-  await writeFile(join(bin, 'node'), `#!/bin/sh\necho "$*" >> "${join(dir, 'node.log')}"\nexit 2\n`);
+  if (config !== undefined) await writeConfig(dir, config);
+  await writeFile(join(bin, 'node'), `#!/bin/sh
+case "$*" in *config.mjs*|*--list-reviewers*) exec "${process.execPath}" "$@" ;; esac
+echo "$*" >> "${join(dir, 'node.log')}"\nexit 2\n`);
   await writeFile(join(bin, 'sleep'), `#!/bin/sh\necho "$1" >> "${join(dir, 'sleep.log')}"\nkill $PPID\n`);
   await writeFile(join(bin, 'claude'), `#!/bin/sh\ntouch "${join(dir, 'claude.log')}"\n`);
   await writeFile(join(bin, 'gh'), `#!/bin/sh\necho v0.0.1\n`);
   for (const name of ['node', 'sleep', 'claude', 'gh']) await chmod(join(bin, name), 0o755);
   const child = spawn('bash', [wrapper, ...args], { stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state') } });
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config') } });
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += chunk; });
   const code = await new Promise(resolve => child.on('exit', (exitCode, signal) => resolve(exitCode ?? signal)));
@@ -321,6 +331,64 @@ test('--loopの引数の誤りは、scanを起動せずに終了コード1で止
     assert.equal(code, 1, args.join(' '));
     assert.deepEqual([scans, sleeps, claude], [[], [], false], args.join(' '));
   }
+});
+
+test('--loopは、コマンドで指定しなかった対象と間隔を設定ファイルのloopから読む', async () => {
+  const repos = { loop: { repos: ['acme/widget', 'other/gadget.js'], interval: 30 } };
+  for (const [args, config, scan, sleep] of [
+    [['--loop'], repos, 'scan --repo acme/widget --repo other/gadget.js', '1800'],
+    [['--loop'], { loop: { org: 'acme' } }, 'scan --org acme', '600'],
+    // コマンドの --org か --repo があれば、設定ファイルの対象はどちらも使わない。
+    [['--loop', '--org', 'umbrella'], repos, 'scan --org umbrella', '1800'],
+    [['--loop', '--repo', 'a/b', '--interval', '5'], { loop: { org: 'acme', interval: 30 } }, 'scan --repo a/b', '300'],
+    // 既定のレビュアーは runner が読むので、scan には渡さない。
+    [['--loop'], { ...repos, reviewers: [{ cli: 'claude', model: 'model-a' }] }, 'scan --repo acme/widget --repo other/gadget.js', '1800'],
+  ]) {
+    const { code, scans, sleeps } = await loop(args, config);
+    assert.equal(code, 'SIGTERM', args.join(' '));
+    assert.deepEqual([scans, sleeps], [[`${scanner} ${scan}`], [sleep]], args.join(' '));
+  }
+});
+
+test('設定ファイルに誤りがあれば、--loopはscanを起動せずに終了コード1で止まる', async () => {
+  for (const [args, config] of [
+    [['--loop', '--org', 'acme'], '{'], [['--loop'], { loop: { repos: ['a/b'], interval: 0 } }],
+    [['--loop', '--org', 'acme'], { reviewers: [{ cli: 'gemini', model: 'm' }] }], [['--loop', '--org', 'acme'], { reviewer: [] }],
+    // --team や --org で使わない項目の誤りでも止まる。
+    [['--loop', '--org', 'acme', '--team', 'opus'], { loop: { repo: 'a/b' } }],
+    [['--loop', '--org', 'acme', '--team', 'opus'], { reviewers: [{ cli: 'gemini', model: 'm' }] }],
+  ]) {
+    const { code, stderr, scans, sleeps, claude } = await loop(args, config);
+    assert.equal(code, 1, JSON.stringify(config));
+    assert.deepEqual([scans, sleeps, claude], [[], [], false], JSON.stringify(config));
+    assert.match(stderr, /^設定ファイルに誤りがあります: /, JSON.stringify(config));
+  }
+  // 設定ファイルに間隔だけがあり、対象がどこにも無い。
+  const { code, stderr, scans } = await loop(['--loop'], { loop: { interval: 30 } });
+  assert.deepEqual([code, scans], [1, []]);
+  assert.match(stderr, /^rt: --loop には --org か --repo のどちらか一方を指定してください（設定ファイルの loop\.org か loop\.repos でもよい）/);
+});
+
+test('設定ファイルに誤りがあれば、--teamを付けても、claudeを起動せず、開始も数えずに終了コード1で止まる', async () => {
+  for (const config of ['{', { reviewers: [{ cli: 'gemini', model: 'm' }] }, { reviewer: [] }]) {
+    for (const args of [[prUrl], ['--team', 'opus', prUrl]]) {
+      const ctx = await setup();
+      await writeConfig(ctx.dir, config);
+      const { code, stderr, argv } = await start(args, ctx).done;
+      assert.equal(code, 1, JSON.stringify(config));
+      assert.equal(argv, null, JSON.stringify(config));
+      assert.match(stderr, /^設定ファイルに誤りがあります: .*\/config\/review-team\/rt\.json（/, JSON.stringify(config));
+      assert.equal(await readFile(`${prState(ctx.dir)}.reviewed`, 'utf8').catch(() => null), null, JSON.stringify(config));
+    }
+  }
+});
+
+test('設定ファイルのreviewersがあっても、claudeには--reviewerを渡さない（既定のレビュアーはrunnerが読む）', async () => {
+  const ctx = await setup();
+  await writeConfig(ctx.dir, { reviewers: [{ cli: 'claude', model: 'model-a', effort: 'max' }] });
+  const { code, argv } = await start([prUrl], ctx).done;
+  assert.equal(code, 0);
+  assert.equal(argv.at(-1), prompt([]));
 });
 
 // macOS の bash 3.2 は変数名の終わりをバイトごとに isalnum() で判定し、UTF-8 の上位バイトを英字とみなすことがある。

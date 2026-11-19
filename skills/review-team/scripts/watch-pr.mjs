@@ -611,9 +611,9 @@ async function wait(url) {
 const plistPath = () => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
 export const escapeXml = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// launchd and cron start jobs with a minimal environment, so the current PATH, state directory and CLI overrides are copied in.
+// launchd and cron start jobs with a minimal environment, so the current PATH, state and config directories and CLI overrides are copied in.
 export const scheduleEnv = () => Object.entries(process.env)
-  .filter(([key]) => key === 'PATH' || key === 'XDG_STATE_HOME' || (key.startsWith('REVIEW_TEAM_') && !['REVIEW_TEAM_DEPTH', 'REVIEW_TEAM_WATCH_POSTING', 'REVIEW_TEAM_PR_LOCK'].includes(key)));
+  .filter(([key]) => ['PATH', 'XDG_STATE_HOME', 'XDG_CONFIG_HOME'].includes(key) || (key.startsWith('REVIEW_TEAM_') && !['REVIEW_TEAM_DEPTH', 'REVIEW_TEAM_WATCH_POSTING', 'REVIEW_TEAM_PR_LOCK'].includes(key)));
 
 function plist() {
   const env = scheduleEnv();

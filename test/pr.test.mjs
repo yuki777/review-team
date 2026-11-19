@@ -86,7 +86,8 @@ test('--prはリポジトリをキャッシュにクローンし、PRのheadを�
 });
 
 test('--prと--repoは同時に指定できない', async () => {
-  const child = spawn(process.execPath, [runner, '--pr', '1', '--repo', '.', '--output', join(tmpdir(), 'unused')], { stdio: 'ignore' });
+  const child = spawn(process.execPath, [runner, '--pr', '1', '--repo', '.', '--output', join(tmpdir(), 'unused')],
+    { stdio: 'ignore', env: { ...process.env, XDG_CONFIG_HOME: join(tmpdir(), 'review-team-no-config') } });
   assert.equal(await new Promise(resolve => child.on('exit', resolve)), 2);
 });
 
