@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(import.meta.url);
-const help = `review-team config: 利用者の設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/rt.json）を読みます。
+const help = `review-team config: 利用者の設定ファイル（\${XDG_CONFIG_HOME:-~/.config}/review-team/config.json）を読みます。
 
 node config.mjs loop    設定ファイルを確かめ、loop の値を「org <組織>」「repo <owner/name>」「interval <分>」の行で出す（rt --loop 用）
 
@@ -15,7 +15,7 @@ JSON として読めない、知らないキーがある、値の形が違うと
 `;
 
 export function configPath() {
-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'review-team', 'rt.json');
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'review-team', 'config.json');
 }
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 const runner = new URL('../skills/review-team/scripts/run-reviewers.mjs', import.meta.url).pathname;
 
-// The user's config directory is always a temporary one, so a developer's own rt.json never reaches a test.
+// The user's config directory is always a temporary one, so a developer's own config.json never reaches a test.
 async function run(args, env = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   await writeFile(join(dir, 'packet.json'), JSON.stringify({ intent: '意図', diff: '差分' }));
@@ -19,12 +19,12 @@ async function run(args, env = {}) {
   return { dir, code, stderr };
 }
 
-// Runs --list-reviewers with the given rt.json (none when config is undefined; a string is written as it is).
+// Runs --list-reviewers with the given config.json (none when config is undefined; a string is written as it is).
 async function list(config, args = []) {
   const dir = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   if (config !== undefined) {
     await mkdir(join(dir, 'review-team'));
-    await writeFile(join(dir, 'review-team', 'rt.json'), typeof config === 'string' ? config : JSON.stringify(config));
+    await writeFile(join(dir, 'review-team', 'config.json'), typeof config === 'string' ? config : JSON.stringify(config));
   }
   const child = spawn(process.execPath, [runner, '--list-reviewers', ...args],
     { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, XDG_CONFIG_HOME: dir } });
@@ -34,7 +34,7 @@ async function list(config, args = []) {
   child.stderr.on('data', chunk => { stderr += chunk; });
   const code = await new Promise(resolve => child.on('exit', resolve));
   await rm(dir, { recursive: true, force: true });
-  return { code, stdout, stderr, file: join(dir, 'review-team', 'rt.json') };
+  return { code, stdout, stderr, file: join(dir, 'review-team', 'config.json') };
 }
 
 test('レビュアーの本文はreviewer-<ID>.mdに書き、Claude Codeの指示ファイルCLAUDE.mdと名前が重ならない', async () => {
@@ -92,7 +92,7 @@ for (const [spec, message] of [
   });
 }
 
-test('既定のレビュアーは、設定ファイルのreviewersがあればそれ、無ければconfig/reviewers.jsonになる', async () => {
+test('既定のレビュアーは、設定ファイルのreviewersがあればそれ、無ければスキル同梱のconfig/reviewers.jsonになる', async () => {
   const builtin = JSON.parse(await readFile(new URL('../skills/review-team/config/reviewers.json', import.meta.url), 'utf8')).reviewers
     .map(({ cli, model, effort }) => `${cli}:${model}:${effort}\n`).join('');
   assert.deepEqual(await list().then(({ code, stdout }) => [code, stdout]), [0, builtin]);
@@ -119,7 +119,7 @@ echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,
 `);
   await chmod(cli, 0o755);
   await mkdir(join(dir, 'review-team'));
-  await writeFile(join(dir, 'review-team', 'rt.json'), JSON.stringify({ reviewers: [{ cli: 'claude', model: 'model-a', effort: 'max' }] }));
+  await writeFile(join(dir, 'review-team', 'config.json'), JSON.stringify({ reviewers: [{ cli: 'claude', model: 'model-a', effort: 'max' }] }));
   const { dir: out, code } = await run([], { REVIEW_TEAM_CLAUDE_CLI: cli, XDG_CONFIG_HOME: dir });
   assert.equal(code, 0);
   assert.equal(await readFile(join(out, 'out', 'reviewer-claude.md'), 'utf8'), 'model-a/max');
@@ -130,7 +130,7 @@ echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"success\\",\\"is_error\\":false,
 test('設定ファイルに誤りがあれば、レビューを始めず、出力先も作らずに終了コード2で終わる', async () => {
   const config = await mkdtemp(join(tmpdir(), 'review-team-test-'));
   await mkdir(join(config, 'review-team'));
-  await writeFile(join(config, 'review-team', 'rt.json'), JSON.stringify({ reviewer: [] }));
+  await writeFile(join(config, 'review-team', 'config.json'), JSON.stringify({ reviewer: [] }));
   const { dir, code, stderr } = await run([], { XDG_CONFIG_HOME: config });
   assert.equal(code, 2);
   assert.match(stderr, /^設定ファイルに誤りがあります: /);
