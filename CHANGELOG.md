@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.6.2](https://github.com/yuki777/review-team/compare/v4.6.1...v4.6.2) - 2026-11-19
+
+- 同梱の既定値ファイルを config/reviewers.json から config/default.json に改名する by @yuki777 in https://github.com/yuki777/review-team/pull/186
+
 ## [v4.6.1](https://github.com/yuki777/review-team/compare/v4.6.0...v4.6.1) - 2026-11-19
 
 - 設定ファイルの名前を rt.json から config.json に変える by @yuki777 in https://github.com/yuki777/review-team/pull/183
