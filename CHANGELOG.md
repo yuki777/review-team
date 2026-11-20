@@ -1,5 +1,9 @@
 # Changelog
 
+## [v4.7.1](https://github.com/yuki777/review-team/compare/v4.7.0...v4.7.1) - 2026-11-20
+
+- 通知のサブタイトルを owner/repo#123 から repo#123 にして、リポジトリ名が見切れないようにする by @yuki777 in https://github.com/yuki777/review-team/pull/195
+
 ## [v4.7.0](https://github.com/yuki777/review-team/compare/v4.6.2...v4.7.0) - 2026-11-19
 
 - agy（Antigravity CLI）のレビュアー対応を戻し、Gemini 4 Neon（neon）を使えるようにする by @yuki777 in https://github.com/yuki777/review-team/pull/189
