@@ -636,7 +636,7 @@ notifyTest('Act Onが0件の投稿は、条件がそろったtickで1回通知�
   // Five hours on, the marks at 1, 2 and 4 hours have passed: one reminder, named after the latest.
   await t.age('notifiedAt', 5);
   assert.match(await t.tick(), / notify \(4h\)$/m);
-  assert.equal((await t.opens())[1], openArgs(t, 'Review Team Reminder (4h)', 'Approve 忘れがあります'));
+  assert.equal((await t.opens())[1], openArgs(t, 'Review Team (4h)', 'Approve 忘れがあります'));
   assert.doesNotMatch(await t.tick(), / notify /);
   assert.equal((await t.opens()).length, 2);
 });
@@ -682,7 +682,7 @@ notifyTest('自分のいちばん新しい判定が古いcommitへのApproveな�
   await t.age('notifiedAt', 1.5);
   assert.match(await t.tick(), / notify \(1h\)$/m);
   assert.deepEqual(await t.opens(), [openArgs(t, 'Review Team (0h)', reapproveFirst),
-    openArgs(t, 'Review Team Reminder (1h)', reapproveReminder)]);
+    openArgs(t, 'Review Team (1h)', reapproveReminder)]);
 });
 
 notifyTest('古いcommitへの自分の判定のうち、いちばん新しいものがRequest changesなら、本文は変えない', async () => {
@@ -698,7 +698,7 @@ notifyTest('古いcommitへの自分の判定のうち、いちばん新しい�
     await t.age('notifiedAt', 1.5);
     assert.match(await t.tick(), / notify \(1h\)$/m);
     assert.deepEqual(await t.opens(), [openArgs(t, 'Review Team (0h)', 'Act On なし、CI 成功。Approve できます'),
-      openArgs(t, 'Review Team Reminder (1h)', 'Approve 忘れがあります')], JSON.stringify(nodes));
+      openArgs(t, 'Review Team (1h)', 'Approve 忘れがあります')], JSON.stringify(nodes));
   }
 });
 

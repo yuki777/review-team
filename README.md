@@ -115,7 +115,7 @@ rt --loop --org <組織> --team fable:max-astra:xhigh
 review-team のレビューは常にコメントとして投稿され、Approve は人が GitHub で行います。投稿したレビューの Act On が0件で、PR が Approve できる状態になったら、1分ごとの見回りが [terminal-notifier](https://github.com/julienXX/terminal-notifier) で OS の通知を出します。通知をクリックすると PR が開きます。`rt`（`--loop` を含む）と `--watch` で投稿した PR が対象です。
 
 - **通知する条件**（すべて満たしたとき）: PR が open で draft でない。head がレビューした commit のまま（ウォッチ中に差分が同じ push があったときは、その head も同じとみなす）。CI が通っている（CI が無ければ通っているとみなす。実行中なら通るまで待つ）。コンフリクトが無い。未解決のレビュースレッドが無い（誰のスレッドでも。`--with-consider` で投稿した Consider のスレッドも含む）。その head に自分の Approve も Request changes も無い。自分が作成した PR は通知しない。
-- **リマインダー**: 最初の通知（`Review Team (0h)`）から 1・2・4・8…時間の時点で、条件を確かめ直して `Review Team Reminder (1h)` のように通知する。条件が欠けていた回は見送り、次の時刻でまた確かめる。Mac がスリープしていて時刻を過ぎたときは、起きたあとに1回だけ通知する。
+- **リマインダー**: 最初の通知（`Review Team (0h)`）から 1・2・4・8…時間の時点で、条件を確かめ直して `Review Team (1h)` のように通知する。条件が欠けていた回は見送り、次の時刻でまた確かめる。Mac がスリープしていて時刻を過ぎたときは、起きたあとに1回だけ通知する。
 - **本文**: ふつうは「Act On なし、CI 成功。Approve できます」、リマインダーは「Approve 忘れがあります」。自分の Approve / Request changes のうちいちばん新しいものが、レビューした commit より前の commit への Approve のときは、「Approve 後に push がありました。変更を確認して、もう一度 Approve してください」、リマインダーは「Approve 後の push が未承認です。変更を確認して、もう一度 Approve してください」になる。push で古い Approve を取り消す設定のリポジトリでは、取り消された Approve は数えないので、ふつうの本文になる。通知する条件と終わる条件は、どちらの本文でも同じ。
 - **終わる条件**: PR のマージかクローズ。その head への自分の Approve か Request changes。条件がそろわないまま7日たったとき。新しい push があると止まり、新しい head のレビューが Act On 0件で投稿されたら最初から通知する。手で止めるには `node ~/.agents/skills/review-team/scripts/watch-pr.mjs remove <PR-URL>`。
 - **オン・オフ**: terminal-notifier.app が `/Applications/terminal-notifier.app` か `$(brew --prefix terminal-notifier)/terminal-notifier.app` にあれば通知し、どちらにも無ければ通知しない（エラーにもならない）。オプションや環境変数はない。
