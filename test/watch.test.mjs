@@ -5,6 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { withoutLaunchd } from './launchd.mjs';
 
 const execFileAsync = promisify(execFile);
 const watcher = new URL('../skills/review-team/scripts/watch-pr.mjs', import.meta.url).pathname;
@@ -55,8 +56,8 @@ cp "${diff}" "$out/reviewed.diff"
   await writeFile(join(bin, 'open'), `#!/bin/sh\nprintf '%s|' "$@" >> "${openLog}"\necho >> "${openLog}"\n`);
   for (const name of ['gh', 'brew', 'open']) await chmod(join(bin, name), 0o755);
   await chmod(lead, 0o755);
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config'),
-    REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1', REVIEW_TEAM_QUIET: '0', ...extraEnv };
+  const env = await withoutLaunchd(dir, { ...process.env, PATH: `${bin}:${process.env.PATH}`, XDG_STATE_HOME: join(dir, 'state'), XDG_CONFIG_HOME: join(dir, 'config'),
+    REVIEW_TEAM_LEAD_CLI: lead, REVIEW_TEAM_LEAD_TIMEOUT: '1', REVIEW_TEAM_QUIET: '0', ...extraEnv });
   delete env.REVIEW_TEAM_DEPTH;
   // One answer serves both the watch query and the notify query, which reads the fields after headRefOid.
   const setPr = (fields) => writeFile(pr, JSON.stringify({ data: { resource: {
@@ -115,9 +116,17 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   await t.setPr({ headRefOid: 'aaa' });
   const result = await t.register('aaa', ['--effort', 'max']);
   assert.equal(result.registered, true);
-  assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
   // Scheduled jobs get the config directory too: a scheduled scan reads the user's config.json through rt.
-  assert.match(result.schedule.cron, / XDG_CONFIG_HOME='[^']*\/config' /);
+  if (process.platform === 'darwin') {
+    // launchd reads the same from the plist, which is written under the HOME of this test.
+    assert.equal(result.schedule.plist, join(t.env.HOME, 'Library', 'LaunchAgents', 'io.github.yuki777.review-team.watch.plist'));
+    const plist = await readFile(result.schedule.plist, 'utf8');
+    assert.match(plist, /<string>tick<\/string>/);
+    for (const key of ['XDG_STATE_HOME', 'XDG_CONFIG_HOME']) assert.ok(plist.includes(`<key>${key}</key><string>${t.env[key]}</string>`), key);
+  } else {
+    assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
+    assert.match(result.schedule.cron, / XDG_CONFIG_HOME='[^']*\/config' /);
+  }
   const s = await t.state();
   assert.equal(s.effort, 'max');
   assert.equal(s.maxRereviews, 5);
@@ -581,7 +590,9 @@ test('rtのロックはcronの行に入らず、deferでも外れる。rtのレ�
   await writeFile(join(out, 'reviewed.diff'), '');
   const { stdout } = await execFileAsync(process.execPath, [watcher, 'defer', '--output', out],
     { env: { ...t.env, REVIEW_TEAM_PR_LOCK: String(process.pid) } });
-  if (process.platform !== 'darwin') assert.doesNotMatch(JSON.parse(stdout).schedule.cron, /REVIEW_TEAM_PR_LOCK/);
+  // On macOS the schedule is the plist instead of a cron line.
+  const { schedule } = JSON.parse(stdout);
+  assert.doesNotMatch(schedule.cron ?? await readFile(schedule.plist, 'utf8'), /REVIEW_TEAM_PR_LOCK/);
   await assert.rejects(stat(lock));
   // defer posted nothing, so the head is not recorded as reviewed.
   assert.equal(JSON.parse(await readFile(`${t.stateFile}.reviewed`, 'utf8')).completedHead, 'aaa');
