@@ -397,9 +397,8 @@ async function sendNotification(app, url, mark, reapprove) {
   const [first, reminder] = reapprove
     ? ['Approve 後に push がありました。変更を確認して、もう一度 Approve してください', 'Approve 後の push が未承認です。変更を確認して、もう一度 Approve してください']
     : ['Act On なし、CI 成功。Approve できます', 'Approve 忘れがあります'];
-  const [title, message] = mark ? [`Review Team Reminder (${mark}h)`, reminder] : ['Review Team (0h)', first];
-  await execFileAsync('open', ['-n', app, '--args', '-title', title, '-subtitle', `${repo}#${number}`,
-    '-message', message, '-sound', 'default', '-open', url, '-group', url], { timeout: 30000 });
+  await execFileAsync('open', ['-n', app, '--args', '-title', `Review Team (${mark}h)`, '-subtitle', `${repo}#${number}`,
+    '-message', mark ? reminder : first, '-sound', 'default', '-open', url, '-group', url], { timeout: 30000 });
 }
 
 // Handles one notify record, and returns what it did for the tick log. findApp looks for the app once per tick.
