@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -15,6 +15,8 @@ export async function withoutLaunchd(dir, env) {
   await writeFile(launchctl, '#!/bin/sh\nexit 0\n');
   await chmod(launchctl, 0o755);
   await mkdir(join(dir, 'home'));
+  // A version manager's shim finds its node through HOME, so a child that starts node by name gets the one running the tests.
+  await symlink(process.execPath, join(dir, 'bin', 'node'));
   const isolated = { ...env, HOME: join(dir, 'home') };
   // A file that cannot be run is passed over in the PATH search, which would then reach the real launchctl.
   const { stdout } = await execFileAsync('/bin/sh', ['-c', 'command -v launchctl'], { env: isolated });

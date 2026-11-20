@@ -120,9 +120,10 @@ test('recordはPRを12時間登録し、tickはLLMを起動せずにpushが無�
   if (process.platform === 'darwin') {
     // launchd reads the same from the plist, which is written under the HOME of this test.
     assert.equal(result.schedule.plist, join(t.env.HOME, 'Library', 'LaunchAgents', 'io.github.yuki777.review-team.watch.plist'));
-    const plist = await readFile(result.schedule.plist, 'utf8');
-    assert.match(plist, /<string>tick<\/string>/);
-    for (const key of ['XDG_STATE_HOME', 'XDG_CONFIG_HOME']) assert.ok(plist.includes(`<key>${key}</key><string>${t.env[key]}</string>`), key);
+    // plutil gives each value as launchd reads it, so a path with & or < in it compares equal.
+    const value = async keyPath => (await execFileAsync('plutil', ['-extract', keyPath, 'raw', '-o', '-', result.schedule.plist])).stdout.replace(/\n$/, '');
+    assert.equal(await value('ProgramArguments.2'), 'tick');
+    for (const key of ['XDG_STATE_HOME', 'XDG_CONFIG_HOME']) assert.equal(await value(`EnvironmentVariables.${key}`), t.env[key], key);
   } else {
     assert.match(result.schedule.cron, /^\* \* \* \* \* .*XDG_STATE_HOME='[^']*\/state' .* tick /);
     assert.match(result.schedule.cron, / XDG_CONFIG_HOME='[^']*\/config' /);
