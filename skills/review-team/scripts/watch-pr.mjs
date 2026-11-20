@@ -389,10 +389,10 @@ async function notifierApp() {
 // The app is started through open: the Homebrew build is refused permission to notify when its binary is run directly.
 // A click opens the PR, and a later notification of the same PR replaces this one.
 async function sendNotification(app, url, mark) {
-  const { owner, repo, number } = parsePrUrl(url);
+  const { repo, number } = parsePrUrl(url);
   const [title, message] = mark ? [`Review Team Reminder (${mark}h)`, 'Approve 忘れがあります']
     : ['Review Team (0h)', 'Act On なし、CI 成功。Approve できます'];
-  await execFileAsync('open', ['-n', app, '--args', '-title', title, '-subtitle', `${owner}/${repo}#${number}`,
+  await execFileAsync('open', ['-n', app, '--args', '-title', title, '-subtitle', `${repo}#${number}`,
     '-message', message, '-sound', 'default', '-open', url, '-group', url], { timeout: 30000 });
 }
 

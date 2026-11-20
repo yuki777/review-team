@@ -602,7 +602,7 @@ test('中身の無いロックは、1分たつまで取らず、過ぎたら回�
 // The notifier is looked for in /Applications first, so these tests cannot control it on a machine that has it there.
 const hasSystemNotifier = Boolean(await stat('/Applications/terminal-notifier.app').catch(() => null));
 const notifyTest = (name, fn) => test(name, { skip: hasSystemNotifier }, fn);
-const openArgs = (t, title, message) => `-n|${t.app}|--args|-title|${title}|-subtitle|acme/widget#7|-message|${message}|-sound|default|-open|${prUrl}|-group|${prUrl}|`;
+const openArgs = (t, title, message) => `-n|${t.app}|--args|-title|${title}|-subtitle|widget#7|-message|${message}|-sound|default|-open|${prUrl}|-group|${prUrl}|`;
 
 async function ready(setupEnv) {
   const t = await setup(setupEnv);
