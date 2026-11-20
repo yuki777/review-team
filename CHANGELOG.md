@@ -1,5 +1,11 @@
 # Changelog
 
+## [v4.7.2](https://github.com/yuki777/review-team/compare/v4.7.1...v4.7.2) - 2026-11-20
+
+- macOS でテストが実機の launchd の登録に触れないようにする by @yuki777 in https://github.com/yuki777/review-team/pull/198
+- 古い commit への Approve が残っている PR の通知は、再 Approve を求める本文にする by @yuki777 in https://github.com/yuki777/review-team/pull/201
+- fix: リマインダーの通知のタイトルも Review Team (Nh) にする by @yuki777 in https://github.com/yuki777/review-team/pull/202
+
 ## [v4.7.1](https://github.com/yuki777/review-team/compare/v4.7.0...v4.7.1) - 2026-11-20
 
 - 通知のサブタイトルを owner/repo#123 から repo#123 にして、リポジトリ名が見切れないようにする by @yuki777 in https://github.com/yuki777/review-team/pull/195
