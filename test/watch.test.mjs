@@ -650,9 +650,9 @@ notifyTest('条件が欠けている間は最初の通知を待ち、そろっ�
     { reviewThreads: { totalCount: 2, nodes: [{ isResolved: true }, { isResolved: false }] } },
     { reviewThreads: { totalCount: 101, nodes: [{ isResolved: true }] } },
     // Past 100 verdicts the viewer's own may be out of sight.
-    { reviews: { totalCount: 101, nodes: [{ viewerDidAuthor: false, commit: { oid: 'aaa' } }] } },
+    { reviews: { totalCount: 101, nodes: [{ state: 'APPROVED', viewerDidAuthor: false, commit: { oid: 'aaa' } }] } },
     // An approval of an older commit does not answer for this head.
-    { headRefOid: 'aaa', mergeable: 'CONFLICTING', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }] } },
+    { headRefOid: 'aaa', mergeable: 'CONFLICTING', reviews: { totalCount: 1, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: '000' } }] } },
   ];
   for (const fields of notReady) {
     await t.setPr(fields);
@@ -664,9 +664,42 @@ notifyTest('条件が欠けている間は最初の通知を待ち、そろっ�
   // A repository with no CI counts as passing, and resolved threads do not hold the notification back.
   await t.setPr({ commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
     reviewThreads: { totalCount: 1, nodes: [{ isResolved: true }] },
-    reviews: { totalCount: 2, nodes: [{ viewerDidAuthor: true, commit: { oid: '000' } }, { viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
+    reviews: { totalCount: 2, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: '000' } },
+      { state: 'APPROVED', viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
   assert.match(await t.tick(), / notify \(0h\)$/m);
   assert.equal((await t.opens()).length, 1);
+});
+
+const reapproveFirst = 'Approve 後に push がありました。変更を確認して、もう一度 Approve してください';
+const reapproveReminder = 'Approve 後の push が未承認です。変更を確認して、もう一度 Approve してください';
+
+notifyTest('自分のいちばん新しい判定が古いcommitへのApproveなら、最初の通知もリマインダーも再Approveを求める本文にする', async () => {
+  const t = await ready();
+  // The viewer approved 000 before the push. The later verdict on this head is someone else's, and is not looked at.
+  await t.setPr({ reviews: { totalCount: 2, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: '000' } },
+    { state: 'CHANGES_REQUESTED', viewerDidAuthor: false, commit: { oid: 'aaa' } }] } });
+  assert.match(await t.tick(), / notify \(0h\)$/m);
+  await t.age('notifiedAt', 1.5);
+  assert.match(await t.tick(), / notify \(1h\)$/m);
+  assert.deepEqual(await t.opens(), [openArgs(t, 'Review Team (0h)', reapproveFirst),
+    openArgs(t, 'Review Team Reminder (1h)', reapproveReminder)]);
+});
+
+notifyTest('古いcommitへの自分の判定のうち、いちばん新しいものがRequest changesなら、本文は変えない', async () => {
+  for (const nodes of [
+    // After approving 000 the viewer asked for changes on 111. The approval that follows is someone else's.
+    [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: '000' } }, { state: 'CHANGES_REQUESTED', viewerDidAuthor: true, commit: { oid: '111' } },
+      { state: 'APPROVED', viewerDidAuthor: false, commit: { oid: 'aaa' } }],
+    [{ state: 'CHANGES_REQUESTED', viewerDidAuthor: true, commit: { oid: '000' } }],
+  ]) {
+    const t = await ready();
+    await t.setPr({ reviews: { totalCount: nodes.length, nodes } });
+    assert.match(await t.tick(), / notify \(0h\)$/m);
+    await t.age('notifiedAt', 1.5);
+    assert.match(await t.tick(), / notify \(1h\)$/m);
+    assert.deepEqual(await t.opens(), [openArgs(t, 'Review Team (0h)', 'Act On なし、CI 成功。Approve できます'),
+      openArgs(t, 'Review Team Reminder (1h)', 'Approve 忘れがあります')], JSON.stringify(nodes));
+  }
 });
 
 notifyTest('条件が欠けたリマインダーの回は見送り、次の時刻でまた確かめる。計算中なら次のtickで確かめる', async () => {
@@ -689,7 +722,7 @@ notifyTest('条件が欠けたリマインダーの回は見送り、次の時�
 notifyTest('マージ・そのheadへの自分のレビュー・自分のPRは、通知せずに記録を消す', async () => {
   for (const [fields, reason] of [
     [{ state: 'MERGED' }, 'merged'], [{ state: 'CLOSED' }, 'closed'], [{ viewerDidAuthor: true }, 'own'],
-    [{ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } }, 'answered'],
+    [{ reviews: { totalCount: 1, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: 'aaa' } }] } }, 'answered'],
   ]) {
     const t = await ready();
     await t.setPr(fields);
@@ -728,7 +761,7 @@ notifyTest('pushでheadが進むと通知を止め、差分が同じpushなら�
   assert.match(await t.tick(), / notify \(2h\)$/m);
 
   // An approval of the reviewed commit answers for the later head with the same diff.
-  await t.setPr({ headRefOid: 'bbb', reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  await t.setPr({ headRefOid: 'bbb', reviews: { totalCount: 1, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
   await t.age('notifiedAt', 4.5);
   assert.match(await t.tick(), / notify remove \(answered\)$/m);
   assert.equal((await t.opens()).length, 2);
@@ -760,7 +793,7 @@ notifyTest('GitHubに問い合わせている間に記録が置き換わった�
   const replaced = { pr: prUrl, heads: ['bbb'], recordedAt: new Date(Date.now() + 1000).toISOString() };
   await writeFile(join(t.dir, 'replaced'), JSON.stringify(replaced));
   await writeFile(during, `cp "${join(t.dir, 'replaced')}" "${t.notifyFile}"\n`);
-  await t.setPr({ reviews: { totalCount: 1, nodes: [{ viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
+  await t.setPr({ reviews: { totalCount: 1, nodes: [{ state: 'APPROVED', viewerDidAuthor: true, commit: { oid: 'aaa' } }] } });
   assert.doesNotMatch(await t.tick(), / notify /);
   assert.deepEqual(await t.notifyState(), replaced);
 

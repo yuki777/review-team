@@ -42,6 +42,9 @@ node watch-pr.mjs uninstall  launchd の登録を外す
       条件: open で draft でない、headがレビューしたcommitのまま（差分が同じpushは同じとみなす）、CI が通っている（無ければ通っているとみなす）、
             コンフリクトが無い、未解決のレビュースレッドが無い、そのheadに自分の Approve も Request changes も無い。自分が作成したPRは通知しない
       以後、最初の通知から 1・2・4・8…時間の時点で、条件を確かめ直してリマインドする（条件が欠けた回は見送る）
+      本文は2種類。ふつうは Approve できること（リマインダーは Approve 忘れ）を伝える。自分の Approve / Request changes のうち
+            いちばん新しいものが、レビューしたcommitより前のcommitへの Approve なら、push 後の変更を確認してもう一度 Approve するよう伝える
+            （push で取り消された Approve は数えない）。通知する条件と終わる条件は、どちらの本文でも同じ
       マージかクローズ、そのheadへの自分の Approve か Request changes、remove で終わる。条件がそろわないまま7日たっても終わる
       terminal-notifier.app は /Applications と $(brew --prefix terminal-notifier) の2か所だけを探し、無ければ通知しない
 追い越し: 再レビュー中にheadが進んで投稿しなかった回は、失敗にも再レビューの回数にも数えず、新しいheadを次の tick に任せる。続くたびに静穏時間を10分、20分と延ばす（以後は20分）。再レビュー中も1分ごとにheadを確かめ、投稿を始める前に進めば、その場で止める
@@ -366,7 +369,7 @@ const notifyQuery = `query($url: URI!) { resource(url: $url) { ... on PullReques
   state isDraft headRefOid mergeable viewerDidAuthor
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   reviewThreads(first: 100) { totalCount nodes { isResolved } }
-  reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED]) { totalCount nodes { viewerDidAuthor commit { oid } } } } } }`;
+  reviews(last: 100, states: [APPROVED, CHANGES_REQUESTED]) { totalCount nodes { state viewerDidAuthor commit { oid } } } } } }`;
 
 // The latest reminder mark (1, 2, 4, 8... hours after the first notification) that has passed, or 0 before the first.
 function passedMark(hours) {
@@ -388,10 +391,13 @@ async function notifierApp() {
 
 // The app is started through open: the Homebrew build is refused permission to notify when its binary is run directly.
 // A click opens the PR, and a later notification of the same PR replaces this one.
-async function sendNotification(app, url, mark) {
+// reapprove: the viewer approved an earlier commit, so the message asks them to look at the push and approve again.
+async function sendNotification(app, url, mark, reapprove) {
   const { repo, number } = parsePrUrl(url);
-  const [title, message] = mark ? [`Review Team Reminder (${mark}h)`, 'Approve 忘れがあります']
-    : ['Review Team (0h)', 'Act On なし、CI 成功。Approve できます'];
+  const [first, reminder] = reapprove
+    ? ['Approve 後に push がありました。変更を確認して、もう一度 Approve してください', 'Approve 後の push が未承認です。変更を確認して、もう一度 Approve してください']
+    : ['Act On なし、CI 成功。Approve できます', 'Approve 忘れがあります'];
+  const [title, message] = mark ? [`Review Team Reminder (${mark}h)`, reminder] : ['Review Team (0h)', first];
   await execFileAsync('open', ['-n', app, '--args', '-title', title, '-subtitle', `${repo}#${number}`,
     '-message', message, '-sound', 'default', '-open', url, '-group', url], { timeout: 30000 });
 }
@@ -431,7 +437,10 @@ async function notifyOne(file, record, findApp) {
     && (pr.commits.nodes[0]?.commit.statusCheckRollup?.state ?? 'SUCCESS') === 'SUCCESS'
     && pr.reviewThreads.totalCount <= 100 && pr.reviewThreads.nodes.every(thread => thread.isResolved)
     && pr.reviews.totalCount <= 100;
-  if (ready) await sendNotification(await findApp(), record.pr, mark);
+  // The verdicts come oldest first, and none of the viewer's is on these changes. When their latest is an approval,
+  // it is of an earlier commit and still stands (a dismissed one is not among them), and a push came after it.
+  const reapprove = pr.reviews.nodes.findLast(review => review.viewerDidAuthor)?.state === 'APPROVED';
+  if (ready) await sendNotification(await findApp(), record.pr, mark, reapprove);
   // The first notification waits until the conditions hold; a reminder whose conditions do not hold is skipped.
   if (ready || record.notifiedAt) {
     await updateState(file, { notifiedAt: record.notifiedAt ?? new Date(now).toISOString(), lastMark: mark });
